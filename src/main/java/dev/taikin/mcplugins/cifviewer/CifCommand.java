@@ -24,6 +24,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
@@ -103,6 +104,18 @@ public final class CifCommand {
                         .then(Commands.argument("id", IntegerArgumentType.integer(1))
                                 .executes(context -> remove(sender(context),
                                         IntegerArgumentType.getInteger(context, "id")))))
+                .then(Commands.literal("tp")
+                        .then(Commands.argument("id", IntegerArgumentType.integer(1))
+                                .executes(context -> teleport(sender(context),
+                                        IntegerArgumentType.getInteger(context, "id")))))
+                .then(Commands.literal("share")
+                        .then(Commands.argument("id", IntegerArgumentType.integer(1))
+                                .then(Commands.literal("on")
+                                        .executes(context -> share(sender(context),
+                                                IntegerArgumentType.getInteger(context, "id"), true)))
+                                .then(Commands.literal("off")
+                                        .executes(context -> share(sender(context),
+                                                IntegerArgumentType.getInteger(context, "id"), false)))))
                 .then(Commands.literal("clear")
                         .executes(context -> clear(sender(context))))
                 .then(Commands.literal("clearall")
@@ -122,11 +135,13 @@ public final class CifCommand {
         sender.sendMessage(command("/cif fetchat ", "倍率と繰り返しを指定して追加", false));
         sender.sendMessage(command("/cif cod ", "COD ID から取得して保存", false));
         sender.sendMessage(command("/cif codat ", "倍率・繰り返し指定で COD から取得", false));
-        sender.sendMessage(command("/cif models", "表示中モデル一覧", true));
+        sender.sendMessage(command("/cif models", "全モデル一覧", true));
         sender.sendMessage(command("/cif select ", "操作するモデルを選択", false));
-        sender.sendMessage(command("/cif remove ", "指定モデルを削除", false));
+        sender.sendMessage(command("/cif remove ", "指定モデルを削除（所有者/管理者）", false));
+        sender.sendMessage(command("/cif tp ", "モデルの近くへ移動", false));
+        sender.sendMessage(command("/cif share ", "共有編集の ON/OFF（所有者/管理者）", false));
         sender.sendMessage(command("/cif clear", "選択中モデルを削除", true));
-        sender.sendMessage(command("/cif clearall", "全モデルを削除", true));
+        sender.sendMessage(command("/cif clearall", "自分のモデルを削除（管理者は全削除）", true));
 
         sender.sendMessage(Component.text("道具", NamedTextColor.AQUA));
         sender.sendMessage(command("/cif wand", "CIF操作棒を取得", true));
@@ -380,8 +395,10 @@ public final class CifCommand {
         sender.sendMessage(Component.text("表示中モデル (" + models.size() + "):", NamedTextColor.GOLD));
         for (var session : models) {
             String marker = session.id() == activeId ? "* " : "  ";
+            String shared = session.sharedEdit() ? " [共有]" : "";
             sender.sendMessage(Component.text(marker + "#" + session.id() + " " + session.crystal().name()
-                    + " (" + session.renderedAtoms() + " atoms)", NamedTextColor.WHITE));
+                    + " by " + ownerName(session) + shared + " (" + session.renderedAtoms() + " atoms)",
+                    NamedTextColor.WHITE));
         }
         return models.size();
     }
@@ -404,11 +421,17 @@ public final class CifCommand {
         if (player == null) {
             return 0;
         }
-        int removed = plugin.renderer().clear(player, id);
-        if (removed == 0) {
+        var session = plugin.renderer().model(id);
+        if (session == null) {
             sender.sendMessage(Component.text("モデル #" + id + " はありません。", NamedTextColor.RED));
             return 0;
         }
+        if (!plugin.renderer().canDelete(player, session)) {
+            sender.sendMessage(Component.text("このモデルを削除する権限がありません。",
+                    NamedTextColor.RED));
+            return 0;
+        }
+        int removed = plugin.renderer().clear(player, id);
         sender.sendMessage(Component.text("モデル #" + id + " を削除しました (" + removed + " entities).",
                 NamedTextColor.GREEN));
         return removed;
@@ -419,12 +442,18 @@ public final class CifCommand {
         if (player == null) {
             return 0;
         }
-        int id = plugin.renderer().activeId(player);
-        int removed = plugin.renderer().clear(player);
-        if (removed == 0) {
+        var session = plugin.renderer().session(player);
+        if (session == null) {
             sender.sendMessage(Component.text("表示中のモデルはありません。", NamedTextColor.GRAY));
             return 0;
         }
+        if (!plugin.renderer().canDelete(player, session)) {
+            sender.sendMessage(Component.text("このモデルを削除する権限がありません。",
+                    NamedTextColor.RED));
+            return 0;
+        }
+        int id = session.id();
+        int removed = plugin.renderer().clear(player);
         sender.sendMessage(Component.text("モデル #" + id + " を削除しました (" + removed + " entities).",
                 NamedTextColor.GREEN));
         return removed;
@@ -436,9 +465,49 @@ public final class CifCommand {
             return 0;
         }
         int removed = plugin.renderer().clearAll(player);
-        sender.sendMessage(Component.text("全モデルを削除しました (" + removed + " entities).",
+        sender.sendMessage(Component.text("モデルを削除しました (" + removed + " entities).",
                 NamedTextColor.GREEN));
         return removed;
+    }
+
+    private int teleport(CommandSender sender, int id) {
+        Player player = player(sender);
+        if (player == null) {
+            return 0;
+        }
+        try {
+            plugin.renderer().teleport(player, id);
+            sender.sendMessage(Component.text("モデル #" + id + " の近くに移動しました。",
+                    NamedTextColor.GREEN));
+            return 1;
+        } catch (IllegalStateException e) {
+            sender.sendMessage(Component.text(e.getMessage(), NamedTextColor.RED));
+            return 0;
+        }
+    }
+
+    private int share(CommandSender sender, int id, boolean shared) {
+        Player player = player(sender);
+        if (player == null) {
+            return 0;
+        }
+        try {
+            plugin.renderer().setSharedEdit(player, id, shared);
+            sender.sendMessage(Component.text("モデル #" + id + " の共有編集を "
+                    + (shared ? "ON" : "OFF") + " にしました。", NamedTextColor.GREEN));
+            return 1;
+        } catch (IllegalStateException e) {
+            sender.sendMessage(Component.text(e.getMessage(), NamedTextColor.RED));
+            return 0;
+        }
+    }
+
+    private String ownerName(dev.taikin.mcplugins.cifviewer.render.ViewSession session) {
+        if (session.owner() == null) {
+            return "不明";
+        }
+        String name = Bukkit.getOfflinePlayer(session.owner()).getName();
+        return name == null ? session.owner().toString() : name;
     }
 
     private int reload(CommandSender sender) {

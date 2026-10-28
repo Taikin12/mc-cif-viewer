@@ -23,6 +23,8 @@ public final class ViewSession {
     private final UUID worldId;
     private final Crystal crystal;
     private int id;
+    private UUID owner;
+    private boolean sharedEdit;
     private Location origin;
     private double blocksPerAngstrom;
     private int repeatX;
@@ -58,6 +60,14 @@ public final class ViewSession {
 
     public int id() {
         return id;
+    }
+
+    public UUID owner() {
+        return owner;
+    }
+
+    public boolean sharedEdit() {
+        return sharedEdit;
     }
 
     public Crystal crystal() {
@@ -146,6 +156,14 @@ public final class ViewSession {
 
     void id(int id) {
         this.id = id;
+    }
+
+    void owner(UUID owner) {
+        this.owner = owner;
+    }
+
+    void sharedEdit(boolean sharedEdit) {
+        this.sharedEdit = sharedEdit;
     }
 
     void origin(Location origin) {

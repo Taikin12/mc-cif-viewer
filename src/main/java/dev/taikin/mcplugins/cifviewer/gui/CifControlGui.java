@@ -24,6 +24,7 @@ public final class CifControlGui {
     private static final int MODELS = 0;
     private static final int INFO = 4;
     private static final int BONDS = 6;
+    private static final int SHARE = 7;
     private static final int UNIT_CELL = 8;
     private static final int SCALE_UP = 9;
     private static final int REPEAT_UP = 11;
@@ -92,6 +93,7 @@ public final class CifControlGui {
                 case RECENTER -> plugin.renderer().replaceOrigin(player);
                 case SPACE_FILLING -> plugin.renderer().toggleSpaceFilling(player);
                 case BONDS -> plugin.renderer().toggleBonds(player);
+                case SHARE -> plugin.renderer().toggleSharedEdit(player);
                 case UNIT_CELL -> plugin.renderer().toggleUnitCell(player);
                 case RADIUS_MODE -> plugin.renderer().cycleRadiusMode(player);
                 case RESET -> plugin.renderer().reset(player);
@@ -109,7 +111,12 @@ public final class CifControlGui {
                     return;
                 }
                 case CLEAR -> {
-                    plugin.renderer().clear(player);
+                    int removed = plugin.renderer().clear(player);
+                    if (removed == 0) {
+                        player.sendMessage(Component.text("このモデルを削除する権限がありません。",
+                                NamedTextColor.RED));
+                        return;
+                    }
                     player.closeInventory();
                     player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.6f, 0.8f);
                     return;
@@ -142,6 +149,7 @@ public final class CifControlGui {
         inventory.setItem(MODELS, button(Material.CHEST, "モデル一覧",
                 List.of(value("複数モデルの選択 / 削除"), value("選択中: #" + session.id()))));
         inventory.setItem(BONDS, bondsButton(session));
+        inventory.setItem(SHARE, shareButton(session));
         inventory.setItem(UNIT_CELL, unitCellButton(session));
         inventory.setItem(INFO, info(session));
         inventory.setItem(SCALE_UP, button(Material.LIME_STAINED_GLASS_PANE, "全体サイズ +",
@@ -191,6 +199,8 @@ public final class CifControlGui {
         lore.add(value(session.crystal().contents() + "  (単位格子あたり "
                 + session.crystal().atoms().size() + " 原子)"));
         lore.add(value("モデル: #" + session.id()));
+        lore.add(value("所有者: " + ownerName(session)));
+        lore.add(value("共有編集: " + (session.sharedEdit() ? "ON" : "OFF")));
         lore.add(value("表示原子数: " + session.renderedAtoms()));
         lore.add(value("表示形式: " + (session.spaceFilling() ? "空間充填" : "球体")));
         lore.add(value("単位胞: " + (session.showUnitCell() ? "ON" : "OFF")));
@@ -220,6 +230,15 @@ public final class CifControlGui {
                 List.of(value("クリックで空間充填に変更"), value("半径: 共有結合半径ベース")));
     }
 
+    private ItemStack shareButton(ViewSession session) {
+        if (session.sharedEdit()) {
+            return button(Material.ENDER_EYE, "共有編集: ON",
+                    List.of(value("他の人も操作できます"), value("所有者 / 管理者が変更可能")));
+        }
+        return button(Material.ENDER_PEARL, "共有編集: OFF",
+                List.of(value("所有者のみ操作できます"), value("所有者 / 管理者が変更可能")));
+    }
+
     private ItemStack unitCellButton(ViewSession session) {
         if (session.showUnitCell()) {
             return button(Material.SCAFFOLDING, "単位胞: ON",
@@ -247,6 +266,14 @@ public final class CifControlGui {
             case COVALENT -> button(Material.AMETHYST_SHARD, "充填半径: 共有結合",
                     List.of(value("共有結合半径"), value("クリックでvdW半径")));
         };
+    }
+
+    private String ownerName(ViewSession session) {
+        if (session.owner() == null) {
+            return "不明";
+        }
+        String name = Bukkit.getOfflinePlayer(session.owner()).getName();
+        return name == null ? session.owner().toString() : name;
     }
 
     private String radiusModeName(ViewSession.RadiusMode mode) {

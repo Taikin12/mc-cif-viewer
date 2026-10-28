@@ -7,5 +7,11 @@ description: Views CIF crystal structures with colored display entities.
 
 permissions:
   cifviewer.use:
-    description: View CIF crystal structures
+    description: View CIF crystal structures and teleport to models
+    default: true
+  cifviewer.edit.shared:
+    description: Edit models whose owner enabled shared editing
+    default: false
+  cifviewer.admin:
+    description: Edit and delete any model, and manage all shared models
     default: op

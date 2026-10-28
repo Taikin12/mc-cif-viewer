@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -20,22 +21,24 @@ import org.bukkit.configuration.file.YamlConfiguration;
 
 public final class ModelStore {
 
+    public record LoadResult(ModelRegistry registry, boolean migrated) {
+    }
+
     private ModelStore() {
     }
 
-    public static void save(Path file, Map<UUID, PlayerModels> players) throws IOException {
+    public static void save(Path file, ModelRegistry registry) throws IOException {
         YamlConfiguration configuration = new YamlConfiguration();
-        ConfigurationSection playersSection = configuration.createSection("players");
-        for (Map.Entry<UUID, PlayerModels> entry : players.entrySet()) {
-            PlayerModels models = entry.getValue();
-            ConfigurationSection playerSection = playersSection.createSection(entry.getKey().toString());
-            playerSection.set("active", models.activeId());
-            playerSection.set("next-id", models.nextId());
-            ConfigurationSection modelsSection = playerSection.createSection("models");
-            for (ViewSession session : models.models()) {
-                ConfigurationSection section = modelsSection.createSection(Integer.toString(session.id()));
-                writeSession(section, session);
-            }
+        configuration.set("version", 2);
+        configuration.set("next-id", registry.nextId());
+        ConfigurationSection modelsSection = configuration.createSection("models");
+        for (ViewSession session : registry.models()) {
+            ConfigurationSection section = modelsSection.createSection(Integer.toString(session.id()));
+            writeSession(section, session);
+        }
+        ConfigurationSection activeSection = configuration.createSection("active");
+        for (Map.Entry<UUID, Integer> entry : registry.activeMap().entrySet()) {
+            activeSection.set(entry.getKey().toString(), entry.getValue());
         }
         File parent = file.toFile().getParentFile();
         if (parent != null) {
@@ -44,15 +47,66 @@ public final class ModelStore {
         configuration.save(file.toFile());
     }
 
-    public static Map<UUID, PlayerModels> load(Path file, Logger logger) {
-        Map<UUID, PlayerModels> result = new LinkedHashMap<>();
+    public static LoadResult load(Path file, Logger logger) {
+        ModelRegistry registry = new ModelRegistry();
         if (!file.toFile().isFile()) {
-            return result;
+            return new LoadResult(registry, false);
         }
         YamlConfiguration configuration = YamlConfiguration.loadConfiguration(file.toFile());
+        if (configuration.isConfigurationSection("models")) {
+            loadV2(configuration, registry, logger);
+            return new LoadResult(registry, false);
+        }
+        if (configuration.isConfigurationSection("players")) {
+            loadV1(configuration, registry, logger);
+            return new LoadResult(registry, true);
+        }
+        return new LoadResult(registry, false);
+    }
+
+    private static void loadV2(YamlConfiguration configuration, ModelRegistry registry, Logger logger) {
+        registry.nextId(configuration.getInt("next-id", 1));
+        ConfigurationSection modelsSection = configuration.getConfigurationSection("models");
+        if (modelsSection != null) {
+            for (String modelKey : modelsSection.getKeys(false)) {
+                int modelId;
+                try {
+                    modelId = Integer.parseInt(modelKey);
+                } catch (NumberFormatException e) {
+                    logger.warning("Invalid model id in models.yml: " + modelKey);
+                    continue;
+                }
+                ConfigurationSection section = modelsSection.getConfigurationSection(modelKey);
+                if (section == null) {
+                    continue;
+                }
+                try {
+                    ViewSession session = readSession(section, null, false);
+                    if (session != null) {
+                        registry.restore(modelId, session);
+                    }
+                } catch (RuntimeException e) {
+                    logger.warning("Could not restore model " + modelKey + ": " + e.getMessage());
+                }
+            }
+        }
+        ConfigurationSection activeSection = configuration.getConfigurationSection("active");
+        if (activeSection != null) {
+            for (String playerKey : activeSection.getKeys(false)) {
+                try {
+                    UUID playerId = UUID.fromString(playerKey);
+                    registry.setActive(playerId, activeSection.getInt(playerKey));
+                } catch (IllegalArgumentException e) {
+                    logger.warning("Invalid player UUID in models.yml active section: " + playerKey);
+                }
+            }
+        }
+    }
+
+    private static void loadV1(YamlConfiguration configuration, ModelRegistry registry, Logger logger) {
         ConfigurationSection playersSection = configuration.getConfigurationSection("players");
         if (playersSection == null) {
-            return result;
+            return;
         }
         for (String playerKey : playersSection.getKeys(false)) {
             UUID playerId;
@@ -70,11 +124,11 @@ public final class ModelStore {
             if (modelsSection == null) {
                 continue;
             }
-            PlayerModels models = new PlayerModels();
+            Map<Integer, Integer> ids = new HashMap<>();
             for (String modelKey : modelsSection.getKeys(false)) {
-                int modelId;
+                int oldId;
                 try {
-                    modelId = Integer.parseInt(modelKey);
+                    oldId = Integer.parseInt(modelKey);
                 } catch (NumberFormatException e) {
                     logger.warning("Invalid model id in models.yml: " + modelKey);
                     continue;
@@ -84,29 +138,30 @@ public final class ModelStore {
                     continue;
                 }
                 try {
-                    ViewSession session = readSession(section, logger);
+                    ViewSession session = readSession(section, playerId, false);
                     if (session != null) {
-                        models.restore(modelId, session);
+                        int newId = registry.nextId();
+                        registry.restore(newId, session);
+                        ids.put(oldId, newId);
                     }
                 } catch (RuntimeException e) {
                     logger.warning("Could not restore model " + modelKey + ": " + e.getMessage());
                 }
             }
-            if (models.size() == 0) {
-                continue;
-            }
             int activeId = playerSection.getInt("active", 0);
-            if (!models.select(activeId)) {
-                models.select(models.models().getFirst().id());
+            Integer migratedActive = ids.get(activeId);
+            if (migratedActive != null) {
+                registry.setActive(playerId, migratedActive);
+            } else if (playerSection.getInt("active", 0) != 0) {
+                logger.warning("Active model " + activeId + " for " + playerId + " was not migrated.");
             }
-            models.nextId(playerSection.getInt("next-id", models.nextId()));
-            result.put(playerId, models);
         }
-        return result;
     }
 
     private static void writeSession(ConfigurationSection section, ViewSession session) {
         Crystal crystal = session.crystal();
+        section.set("owner", session.owner() == null ? "" : session.owner().toString());
+        section.set("shared-edit", session.sharedEdit());
         section.set("crystal.name", crystal.name());
         Lattice lattice = crystal.lattice();
         section.set("crystal.lattice.a", vector(lattice.toCartesian(1.0, 0.0, 0.0)));
@@ -146,7 +201,7 @@ public final class ModelStore {
         section.set("radius-mode", session.radiusMode().name());
     }
 
-    private static ViewSession readSession(ConfigurationSection section, Logger logger) {
+    private static ViewSession readSession(ConfigurationSection section, UUID defaultOwner, boolean defaultShared) {
         String worldId = section.getString("world", "");
         World world;
         try {
@@ -157,6 +212,20 @@ public final class ModelStore {
         if (world == null) {
             throw new IllegalStateException("world is not loaded");
         }
+
+        UUID owner = defaultOwner;
+        String ownerText = section.getString("owner", "");
+        if (!ownerText.isBlank()) {
+            try {
+                owner = UUID.fromString(ownerText);
+            } catch (IllegalArgumentException e) {
+                throw new IllegalStateException("invalid owner UUID");
+            }
+        }
+        if (owner == null) {
+            throw new IllegalStateException("missing owner");
+        }
+        boolean sharedEdit = section.getBoolean("shared-edit", defaultShared);
 
         String name = section.getString("crystal.name", "Crystal");
         double[][] matrix = {
@@ -192,6 +261,8 @@ public final class ModelStore {
                 section.getDouble("blocks-per-angstrom", 2.0),
                 section.getInt("repeat-x", 1),
                 section.getDouble("atom-scale", 2.0));
+        session.owner(owner);
+        session.sharedEdit(sharedEdit);
         session.repeat(
                 section.getInt("repeat-x", 1),
                 section.getInt("repeat-y", 1),

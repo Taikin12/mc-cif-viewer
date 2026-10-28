@@ -13,9 +13,11 @@ Minecraft Paper 上で CIF 結晶構造を 3D 表示するプラグインです�
 - 原子間の結合線（最近接距離ベースの簡易判定）
 - 軸ごとのリピート（超胞）設定
 - 回転、原点設定、全体サイズ・原子サイズ調整
-- 複数モデルの同時表示（プレイヤーごと、最大 8 個）
-- モデル一覧 GUI からの選択・削除
-- モデルの永続化（`models.yml`）と再起動後の自動復元
+- 全プレイヤー共有の複数モデル（最大 8 個、`max-models`）
+- 共有モデル一覧 / 選択 / テレポート / 削除
+- モデル単位の共有編集 ON/OFF
+- モデルの永続化（`models.yml` v2）と再起動後の自動復元
+- v1 の `models.yml` は起動時に自動で v2 へ移行
 - モデル周辺チャンクの保持（ログアウト後も表示を維持）
 - Materials Project からの構造取得
 - リソースパック再適用コマンド
@@ -87,11 +89,13 @@ build/cifviewer-resourcepack.zip
 | `/cif fetchat <scale> <repeat> <mp-id>` | 倍率・リピート指定で取得 |
 | `/cif cod <id>` | COD から CIF を取得して保存・表示 |
 | `/cif codat <scale> <repeat> <id>` | 倍率・リピート指定で COD から取得 |
-| `/cif models` | 自分の表示中モデル一覧 |
+| `/cif models` | 全モデル一覧 |
 | `/cif select <id>` | 操作対象モデルを選択 |
-| `/cif remove <id>` | 指定モデルを削除 |
-| `/cif clear` | 選択中モデルを削除 |
-| `/cif clearall` | 全モデルを削除 |
+| `/cif remove <id>` | 指定モデルを削除（所有者/管理者） |
+| `/cif tp <id>` | モデルの近くへ移動 |
+| `/cif share <id> on\|off` | 共有編集の ON/OFF（所有者/管理者） |
+| `/cif clear` | 選択中モデルを削除（所有者/管理者） |
+| `/cif clearall` | 自分のモデルを削除（管理者は全削除） |
 | `/cif wand` | CIF 操作棒を取得 |
 | `/cif pack` / `/cif download` | リソースパックを再適用 |
 | `/cif reload` | 設定を再読み込み |
@@ -102,7 +106,9 @@ build/cifviewer-resourcepack.zip
 
 | 権限 | 説明 | デフォルト |
 | --- | --- | --- |
-| `cifviewer.use` | CIF 表示コマンドの利用 | op |
+| `cifviewer.use` | CIF 表示・選択・テレポート | true |
+| `cifviewer.edit.shared` | 共有編集が ON のモデルを編集 | false |
+| `cifviewer.admin` | 全モデルの編集・削除 | op |
 
 ## 操作
 
@@ -117,7 +123,8 @@ build/cifviewer-resourcepack.zip
 
 ## GUI
 
-- モデル一覧
+- 共有モデル一覧（右クリックでテレポート）
+- 共有編集 ON/OFF
 - 単位胞 ON/OFF
 - ボンド ON/OFF（球体表示時のみ）
 - 球体 / 空間充填
@@ -139,7 +146,7 @@ build/cifviewer-resourcepack.zip
 | `atom-scale` | 原子の基本倍率 |
 | `max-atoms` | 1 モデルの最大原子数 |
 | `max-repeat` | 軸ごとの最大リピート |
-| `max-models` | プレイヤーごとの最大モデル数 |
+| `max-models` | 全体の最大モデル数 |
 | `placement-distance` | 初期配置距離 |
 | `show-info` | 構造情報の表示 |
 | `render-mode` | `sphere` / `circle` / `symbol` |
@@ -158,8 +165,9 @@ COD は `/cif cod <id>` で取得できます。取得した CIF は `plugins/Ci
 ## マルチプレイ
 
 - 表示エンティティはワールド上の共通エンティティです。同じバックエンド・同じワールド・近距離にいるプレイヤーなら誰でも見えます。
-- 現在、**操作できるのはモデルの所有者のみ**です。他のプレイヤーは閲覧のみです。
-- `モデル一覧` に出るのは自分のモデルだけです。
+- モデルごとに所有者がいます。デフォルトは所有者のみ編集可能です。
+- 所有者/管理者が「共有編集」を ON にすると、`cifviewer.edit.shared` を持つプレイヤーも操作できます。
+- モデル一覧は全プレイヤーのモデルを表示します。右クリックでテレポートできます。
 - 別バックエンド（Velocity の `test` など）にはエンティティは同期されません。
 - 外部プレイヤーにカスタムモデルを見せるには、リソースパックを HTTPS で公開する必要があります。
 
@@ -169,7 +177,7 @@ COD は `/cif cod <id>` で取得できます。取得した CIF は `plugins/Ci
 - 配位多面体、熱振動楕円体、Miller 面、スラブ生成、原子編集は未実装です。
 - 結合判定は最近接距離ベースの簡易ヒューリスティックです。周期境界をまたぐ結合は表示範囲内の原子間に限定されます。
 - 単位胞は基本セル 1 個分の表示です。
-- モデルの所有者・共有編集権限は現在プレイヤー単位です。モデル単位の共有設定は今後追加予定です。
+- 共有編集はモデル単位の ON/OFF と `cifviewer.edit.shared` 権限で制御します。
 
 ## サンプル CIF
 

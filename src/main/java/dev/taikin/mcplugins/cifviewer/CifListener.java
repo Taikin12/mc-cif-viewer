@@ -101,26 +101,15 @@ public final class CifListener implements Listener {
     }
 
     private void handleModelClick(Player player, CrystalRenderer.ModelRef ref, boolean rightClick) {
-        if (!ref.playerId().equals(player.getUniqueId())) {
-            if (!plugin.wand().has(player)) {
-                plugin.wand().give(player);
-                player.sendMessage(Component.text("CIF操作棒を入手しました。", NamedTextColor.GREEN));
-            } else {
-                player.sendMessage(Component.text("これは他のプレイヤーのモデルです。", NamedTextColor.GRAY));
-            }
-            return;
-        }
-
-        if (!plugin.wand().has(player)) {
-            plugin.wand().give(player);
-            plugin.renderer().select(player, ref.modelId());
-            player.sendMessage(Component.text("CIF操作棒を入手しました。モデル #" + ref.modelId()
-                    + " を選択しました。", NamedTextColor.GREEN));
-            return;
-        }
         if (!plugin.renderer().select(player, ref.modelId())) {
             player.sendMessage(Component.text("モデル #" + ref.modelId() + " はありません。",
                     NamedTextColor.GRAY));
+            return;
+        }
+        if (!plugin.wand().has(player)) {
+            plugin.wand().give(player);
+            player.sendMessage(Component.text("CIF操作棒を入手しました。モデル #" + ref.modelId()
+                    + " を選択しました。", NamedTextColor.GREEN));
             return;
         }
         if (rightClick) {
@@ -200,7 +189,8 @@ public final class CifListener implements Listener {
         } else if (holder instanceof CifRepeatGuiHolder) {
             plugin.repeatGui().handleClick(player, top, slot);
         } else {
-            plugin.modelListGui().handleClick(player, top, slot, event.isShiftClick());
+            plugin.modelListGui().handleClick(player, top, slot, event.isShiftClick(),
+                    event.isRightClick());
         }
     }
 

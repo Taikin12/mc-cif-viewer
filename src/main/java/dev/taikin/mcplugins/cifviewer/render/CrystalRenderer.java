@@ -49,7 +49,7 @@ public final class CrystalRenderer {
 
     private final CifViewerPlugin plugin;
     private final java.nio.file.Path storageFile;
-    private final Map<UUID, PlayerModels> players = new HashMap<>();
+    private ModelRegistry registry = new ModelRegistry();
     private final Map<UUID, ModelRef> interactions = new HashMap<>();
     private final Map<UUID, Map<Long, Integer>> chunkTickets = new HashMap<>();
     private boolean loaded;
@@ -76,18 +76,17 @@ public final class CrystalRenderer {
                     + config.maxAtoms() + "; reduce repeat or use a smaller cell.");
         }
 
-        PlayerModels models = playerModels(player);
-        if (models.size() >= config.maxModels()) {
+        if (registry.size() >= config.maxModels()) {
             throw new IllegalArgumentException("Too many models. Limit is " + config.maxModels() + ".");
         }
 
-        Location origin = placement(player, config, models.size());
+        Location origin = placement(player, config, registry.size());
         ViewSession session = new ViewSession(crystal, origin, blocksPerAngstrom, repeat, config.atomScale());
-        models.add(session);
+        registry.add(player.getUniqueId(), session);
         try {
             render(player, session);
         } catch (RuntimeException e) {
-            models.remove(session.id());
+            registry.remove(session.id());
             throw e;
         }
         markDirty();
@@ -95,23 +94,23 @@ public final class CrystalRenderer {
     }
 
     public ViewSession session(Player player) {
-        PlayerModels models = players.get(player.getUniqueId());
-        return models == null ? null : models.active();
+        return registry.active(player.getUniqueId());
     }
 
     public int activeId(Player player) {
-        PlayerModels models = players.get(player.getUniqueId());
-        return models == null ? 0 : models.activeId();
+        return registry.activeId(player.getUniqueId());
     }
 
     public List<ViewSession> models(Player player) {
-        PlayerModels models = players.get(player.getUniqueId());
-        return models == null ? List.of() : models.models();
+        return registry.models();
+    }
+
+    public ViewSession model(int id) {
+        return registry.get(id);
     }
 
     public boolean select(Player player, int id) {
-        PlayerModels models = players.get(player.getUniqueId());
-        boolean selected = models != null && models.select(id);
+        boolean selected = registry.select(player.getUniqueId(), id);
         if (selected) {
             markDirty();
         }
@@ -122,14 +121,44 @@ public final class CrystalRenderer {
         return interactions.get(entityId);
     }
 
+    public boolean isAdmin(Player player) {
+        return player.hasPermission("cifviewer.admin");
+    }
+
+    public boolean canEdit(Player player, ViewSession session) {
+        if (session == null) {
+            return false;
+        }
+        if (isAdmin(player) || player.getUniqueId().equals(session.owner())) {
+            return true;
+        }
+        return session.sharedEdit() && player.hasPermission("cifviewer.edit.shared");
+    }
+
+    public boolean canDelete(Player player, ViewSession session) {
+        return session != null && (isAdmin(player) || player.getUniqueId().equals(session.owner()));
+    }
+
+    public boolean canShare(Player player, ViewSession session) {
+        return canDelete(player, session);
+    }
+
+    public boolean canDelete(Player player, int id) {
+        return canDelete(player, registry.get(id));
+    }
+
+    public boolean canShare(Player player, int id) {
+        return canShare(player, registry.get(id));
+    }
+
     public void adjustScale(Player player, double multiplier) {
-        ViewSession session = requireSession(player);
+        ViewSession session = requireEditableSession(player);
         session.blocksPerAngstrom(clamp(session.blocksPerAngstrom() * multiplier, 0.1, 10.0));
         refresh(player, session);
     }
 
     public void adjustRepeat(Player player, int delta) {
-        ViewSession session = requireSession(player);
+        ViewSession session = requireEditableSession(player);
         int max = plugin.config().maxRepeat();
         updateRepeat(player, session,
                 clamp(session.repeatX() + delta, 1, max),
@@ -138,7 +167,7 @@ public final class CrystalRenderer {
     }
 
     public void adjustRepeat(Player player, ViewSession.Axis axis, int delta) {
-        ViewSession session = requireSession(player);
+        ViewSession session = requireEditableSession(player);
         int max = plugin.config().maxRepeat();
         int repeatX = session.repeatX();
         int repeatY = session.repeatY();
@@ -152,7 +181,7 @@ public final class CrystalRenderer {
     }
 
     public void resetRepeat(Player player) {
-        ViewSession session = requireSession(player);
+        ViewSession session = requireEditableSession(player);
         updateRepeat(player, session, 1, 1, 1);
     }
 
@@ -170,7 +199,7 @@ public final class CrystalRenderer {
     }
 
     public void rotate(Player player, double deltaX, double deltaY, double deltaZ) {
-        ViewSession session = requireSession(player);
+        ViewSession session = requireEditableSession(player);
         session.rotation(
                 normalize(session.rotationX() + deltaX),
                 normalize(session.rotationY() + deltaY),
@@ -179,18 +208,18 @@ public final class CrystalRenderer {
     }
 
     public void adjustAtomScale(Player player, double multiplier) {
-        ViewSession session = requireSession(player);
+        ViewSession session = requireEditableSession(player);
         session.atomScale(clamp(session.atomScale() * multiplier, 0.2, 8.0));
         refresh(player, session);
     }
 
     public void setRotationAxis(Player player, ViewSession.Axis axis) {
-        requireSession(player).rotationAxis(axis);
+        requireEditableSession(player).rotationAxis(axis);
         markDirty();
     }
 
     public void cycleRotationAxis(Player player) {
-        ViewSession session = requireSession(player);
+        ViewSession session = requireEditableSession(player);
         session.rotationAxis(switch (session.rotationAxis()) {
             case X -> ViewSession.Axis.Y;
             case Y -> ViewSession.Axis.Z;
@@ -200,7 +229,7 @@ public final class CrystalRenderer {
     }
 
     public void rotateAroundAxis(Player player, double degrees) {
-        ViewSession session = requireSession(player);
+        ViewSession session = requireEditableSession(player);
         switch (session.rotationAxis()) {
             case X -> session.rotation(
                     normalize(session.rotationX() + degrees),
@@ -219,25 +248,25 @@ public final class CrystalRenderer {
     }
 
     public void toggleSpaceFilling(Player player) {
-        ViewSession session = requireSession(player);
+        ViewSession session = requireEditableSession(player);
         session.spaceFilling(!session.spaceFilling());
         refresh(player, session);
     }
 
     public void toggleUnitCell(Player player) {
-        ViewSession session = requireSession(player);
+        ViewSession session = requireEditableSession(player);
         session.showUnitCell(!session.showUnitCell());
         refresh(player, session);
     }
 
     public void toggleBonds(Player player) {
-        ViewSession session = requireSession(player);
+        ViewSession session = requireEditableSession(player);
         session.showBonds(!session.showBonds());
         refresh(player, session);
     }
 
     public void cycleRadiusMode(Player player) {
-        ViewSession session = requireSession(player);
+        ViewSession session = requireEditableSession(player);
         session.radiusMode(switch (session.radiusMode()) {
             case VDW -> ViewSession.RadiusMode.IONIC;
             case IONIC -> ViewSession.RadiusMode.COVALENT;
@@ -247,19 +276,19 @@ public final class CrystalRenderer {
     }
 
     public void replaceOrigin(Player player) {
-        ViewSession session = requireSession(player);
+        ViewSession session = requireEditableSession(player);
         session.origin(placement(player, plugin.config()));
         refresh(player, session);
     }
 
     public void setOrigin(Player player, Location origin) {
-        ViewSession session = requireSession(player);
+        ViewSession session = requireEditableSession(player);
         session.origin(origin);
         refresh(player, session);
     }
 
     public void reset(Player player) {
-        ViewSession session = requireSession(player);
+        ViewSession session = requireEditableSession(player);
         session.blocksPerAngstrom(plugin.config().blocksPerAngstrom());
         session.repeat(1, 1, 1);
         session.atomScale(plugin.config().atomScale());
@@ -273,12 +302,40 @@ public final class CrystalRenderer {
         refresh(player, session);
     }
 
-    public int clear(Player player) {
-        PlayerModels models = players.get(player.getUniqueId());
-        if (models == null) {
-            return 0;
+    public void teleport(Player player, int id) {
+        ViewSession session = registry.get(id);
+        if (session == null) {
+            throw new IllegalStateException("モデル #" + id + " はありません。");
         }
-        ViewSession session = models.active();
+        if (!player.hasPermission("cifviewer.use")) {
+            throw new IllegalStateException("テレポートする権限がありません。");
+        }
+        player.teleport(session.origin().clone().add(0.0, 2.0, 0.0));
+    }
+
+    public void toggleSharedEdit(Player player) {
+        ViewSession session = requireSession(player);
+        if (!canShare(player, session)) {
+            throw new IllegalStateException("共有設定を変更する権限がありません。");
+        }
+        session.sharedEdit(!session.sharedEdit());
+        markDirty();
+    }
+
+    public void setSharedEdit(Player player, int id, boolean shared) {
+        ViewSession session = registry.get(id);
+        if (session == null) {
+            throw new IllegalStateException("モデル #" + id + " はありません。");
+        }
+        if (!canShare(player, session)) {
+            throw new IllegalStateException("共有設定を変更する権限がありません。");
+        }
+        session.sharedEdit(shared);
+        markDirty();
+    }
+
+    public int clear(Player player) {
+        ViewSession session = session(player);
         if (session == null) {
             return 0;
         }
@@ -286,45 +343,36 @@ public final class CrystalRenderer {
     }
 
     public int clear(Player player, int id) {
-        PlayerModels models = players.get(player.getUniqueId());
-        if (models == null) {
+        ViewSession session = registry.get(id);
+        if (session == null || !canDelete(player, session)) {
             return 0;
         }
-        ViewSession session = models.remove(id);
-        if (session == null) {
-            return 0;
-        }
+        registry.remove(id);
         int removed = removeEntities(session);
         releaseChunks(session);
-        if (models.size() == 0) {
-            players.remove(player.getUniqueId());
-        }
         markDirty();
         return removed;
     }
 
     public int clearAll(Player player) {
-        PlayerModels models = players.remove(player.getUniqueId());
-        if (models == null) {
-            return 0;
-        }
         int removed = 0;
-        for (ViewSession session : models.models()) {
-            removed += removeEntities(session);
-            releaseChunks(session);
+        for (ViewSession session : registry.models()) {
+            if (isAdmin(player) || player.getUniqueId().equals(session.owner())) {
+                registry.remove(session.id());
+                removed += removeEntities(session);
+                releaseChunks(session);
+            }
         }
         markDirty();
         return removed;
     }
 
     public void clearAll() {
-        for (PlayerModels models : List.copyOf(players.values())) {
-            for (ViewSession session : models.models()) {
-                removeEntities(session);
-                releaseChunks(session);
-            }
+        for (ViewSession session : registry.models()) {
+            removeEntities(session);
+            releaseChunks(session);
         }
-        players.clear();
+        registry.clear();
         removeTaggedEntities();
         interactions.clear();
     }
@@ -351,7 +399,7 @@ public final class CrystalRenderer {
             return;
         }
         try {
-            ModelStore.save(storageFile, players);
+            ModelStore.save(storageFile, registry);
             dirty = false;
         } catch (IOException e) {
             plugin.getLogger().warning("Could not save models.yml: " + e.getMessage());
@@ -359,23 +407,24 @@ public final class CrystalRenderer {
     }
 
     public void load() {
-        if (!players.isEmpty()) {
+        if (registry.size() != 0) {
             return;
         }
-        Map<UUID, PlayerModels> loaded = ModelStore.load(storageFile, plugin.getLogger());
-        players.putAll(loaded);
-        for (Map.Entry<UUID, PlayerModels> entry : loaded.entrySet()) {
-            for (ViewSession session : entry.getValue().models()) {
-                try {
-                    render(session.origin().getWorld(), entry.getKey(), session);
-                } catch (RuntimeException e) {
-                    plugin.getLogger().warning("Could not restore model #" + session.id() + ": "
-                            + e.getMessage());
-                }
+        ModelStore.LoadResult result = ModelStore.load(storageFile, plugin.getLogger());
+        registry = result.registry();
+        for (ViewSession session : registry.models()) {
+            try {
+                render(session.origin().getWorld(), session.owner(), session);
+            } catch (RuntimeException e) {
+                plugin.getLogger().warning("Could not restore model #" + session.id() + ": "
+                        + e.getMessage());
             }
         }
         this.loaded = true;
-        this.dirty = false;
+        this.dirty = result.migrated();
+        if (result.migrated()) {
+            markDirty();
+        }
     }
 
     private void refresh(Player player, ViewSession session) {
@@ -383,8 +432,7 @@ public final class CrystalRenderer {
             return;
         }
         if (!player.getWorld().getUID().equals(session.worldId())) {
-            clearAll(player);
-            player.sendMessage(Component.text("All structures cleared because you changed worlds.",
+            player.sendMessage(Component.text("このモデルは別のワールドにあります。",
                     NamedTextColor.RED));
             return;
         }
@@ -395,7 +443,8 @@ public final class CrystalRenderer {
     }
 
     private void render(Player player, ViewSession session) {
-        render(player.getWorld(), player.getUniqueId(), session);
+        UUID owner = session.owner() == null ? player.getUniqueId() : session.owner();
+        render(player.getWorld(), owner, session);
     }
 
     private void render(World world, UUID ownerId, ViewSession session) {
@@ -892,14 +941,18 @@ public final class CrystalRenderer {
         });
     }
 
-    private PlayerModels playerModels(Player player) {
-        return players.computeIfAbsent(player.getUniqueId(), id -> new PlayerModels());
-    }
-
     private ViewSession requireSession(Player player) {
         ViewSession session = session(player);
         if (session == null) {
             throw new IllegalStateException("No structure is being displayed. Use /cif view <file> first.");
+        }
+        return session;
+    }
+
+    private ViewSession requireEditableSession(Player player) {
+        ViewSession session = requireSession(player);
+        if (!canEdit(player, session)) {
+            throw new IllegalStateException("このモデルを編集する権限がありません。");
         }
         return session;
     }

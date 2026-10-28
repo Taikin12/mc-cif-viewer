@@ -42,7 +42,7 @@ public final class CifModelListGui {
         player.openInventory(inventory);
     }
 
-    public void handleClick(Player player, Inventory inventory, int slot, boolean shiftClick) {
+    public void handleClick(Player player, Inventory inventory, int slot, boolean shiftClick, boolean rightClick) {
         List<ViewSession> models = plugin.renderer().models(player);
         if (models.isEmpty()) {
             player.closeInventory();
@@ -52,17 +52,34 @@ public final class CifModelListGui {
         if (slot >= 0 && slot < models.size()) {
             ViewSession session = models.get(slot);
             if (shiftClick) {
-                plugin.renderer().clear(player, session.id());
+                if (!plugin.renderer().canDelete(player, session)) {
+                    player.sendMessage(Component.text("このモデルを削除する権限がありません。",
+                            NamedTextColor.RED));
+                    return;
+                }
+                int removed = plugin.renderer().clear(player, session.id());
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.6f, 0.8f);
+                player.sendMessage(Component.text("モデル #" + session.id() + " を削除しました ("
+                        + removed + " entities).", NamedTextColor.GREEN));
                 if (plugin.renderer().models(player).isEmpty()) {
                     player.closeInventory();
-                    player.sendMessage(Component.text("全モデルを削除しました。", NamedTextColor.GREEN));
                 } else {
                     populate(inventory, player);
                 }
                 return;
             }
             plugin.renderer().select(player, session.id());
+            if (rightClick) {
+                try {
+                    plugin.renderer().teleport(player, session.id());
+                    player.closeInventory();
+                    player.sendMessage(Component.text("モデル #" + session.id() + " の近くに移動しました。",
+                            NamedTextColor.GREEN));
+                } catch (RuntimeException e) {
+                    player.sendMessage(Component.text(e.getMessage(), NamedTextColor.RED));
+                }
+                return;
+            }
             plugin.controlGui().open(player);
             return;
         }
@@ -74,10 +91,14 @@ public final class CifModelListGui {
                 return;
             }
             int removed = plugin.renderer().clearAll(player);
-            player.closeInventory();
             player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.6f, 0.7f);
-            player.sendMessage(Component.text("全モデルを削除しました (" + removed + " entities).",
+            player.sendMessage(Component.text("モデルを削除しました (" + removed + " entities).",
                     NamedTextColor.GREEN));
+            if (plugin.renderer().models(player).isEmpty()) {
+                player.closeInventory();
+            } else {
+                populate(inventory, player);
+            }
             return;
         }
 
@@ -99,16 +120,20 @@ public final class CifModelListGui {
             inventory.setItem(index, button(active ? Material.ENCHANTED_BOOK : Material.PAPER,
                     "モデル #" + session.id() + ": " + session.crystal().name(),
                     List.of(
+                            value("所有者: " + ownerName(session)),
+                            value("共有編集: " + (session.sharedEdit() ? "ON" : "OFF")),
                             value("原子数: " + session.renderedAtoms()),
                             value("座標: " + format(session.origin().getBlockX()) + ", "
                                     + format(session.origin().getBlockY()) + ", "
                                     + format(session.origin().getBlockZ())),
                             value(active ? "選択中" : "左クリック: 選択"),
+                            value("右クリック: テレポート"),
                             value("Shift+左クリック: 削除"))));
         }
 
-        inventory.setItem(CLEAR_ALL, button(Material.BARRIER, "全モデル消去",
-                List.of(value("Shift+クリックで全削除"))));
+        String clearLabel = plugin.renderer().isAdmin(player) ? "全モデル消去" : "自分のモデル消去";
+        inventory.setItem(CLEAR_ALL, button(Material.BARRIER, clearLabel,
+                List.of(value("Shift+クリックで削除"))));
         inventory.setItem(BACK, button(Material.OAK_DOOR, "戻る", List.of(value("メインメニューへ"))));
     }
 
@@ -132,6 +157,14 @@ public final class CifModelListGui {
 
     private Component value(String text) {
         return Component.text(text, NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false);
+    }
+
+    private String ownerName(ViewSession session) {
+        if (session.owner() == null) {
+            return "不明";
+        }
+        String name = Bukkit.getOfflinePlayer(session.owner()).getName();
+        return name == null ? session.owner().toString() : name;
     }
 
     private String format(int value) {
