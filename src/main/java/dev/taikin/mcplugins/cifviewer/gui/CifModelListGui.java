@@ -1,0 +1,140 @@
+package dev.taikin.mcplugins.cifviewer.gui;
+
+import dev.taikin.mcplugins.cifviewer.CifViewerPlugin;
+import dev.taikin.mcplugins.cifviewer.render.ViewSession;
+import java.util.List;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.Sound;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemFlag;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+
+public final class CifModelListGui {
+
+    private static final int SIZE = 36;
+    private static final int CLEAR_ALL = 27;
+    private static final int BACK = 35;
+
+    private final CifViewerPlugin plugin;
+
+    public CifModelListGui(CifViewerPlugin plugin) {
+        this.plugin = plugin;
+    }
+
+    public void open(Player player) {
+        List<ViewSession> models = plugin.renderer().models(player);
+        if (models.isEmpty()) {
+            player.sendMessage(Component.text("表示中のモデルはありません。", NamedTextColor.GRAY));
+            return;
+        }
+
+        CifModelListGuiHolder holder = new CifModelListGuiHolder(player.getUniqueId());
+        Inventory inventory = Bukkit.createInventory(holder, SIZE,
+                Component.text("CIF: モデル一覧", NamedTextColor.DARK_AQUA));
+        holder.inventory(inventory);
+        populate(inventory, player);
+        player.openInventory(inventory);
+    }
+
+    public void handleClick(Player player, Inventory inventory, int slot, boolean shiftClick) {
+        List<ViewSession> models = plugin.renderer().models(player);
+        if (models.isEmpty()) {
+            player.closeInventory();
+            return;
+        }
+
+        if (slot >= 0 && slot < models.size()) {
+            ViewSession session = models.get(slot);
+            if (shiftClick) {
+                plugin.renderer().clear(player, session.id());
+                player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.6f, 0.8f);
+                if (plugin.renderer().models(player).isEmpty()) {
+                    player.closeInventory();
+                    player.sendMessage(Component.text("全モデルを削除しました。", NamedTextColor.GREEN));
+                } else {
+                    populate(inventory, player);
+                }
+                return;
+            }
+            plugin.renderer().select(player, session.id());
+            plugin.controlGui().open(player);
+            return;
+        }
+
+        if (slot == CLEAR_ALL) {
+            if (!shiftClick) {
+                player.sendMessage(Component.text("全削除するには Shift+クリックしてください。",
+                        NamedTextColor.GRAY));
+                return;
+            }
+            int removed = plugin.renderer().clearAll(player);
+            player.closeInventory();
+            player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.6f, 0.7f);
+            player.sendMessage(Component.text("全モデルを削除しました (" + removed + " entities).",
+                    NamedTextColor.GREEN));
+            return;
+        }
+
+        if (slot == BACK) {
+            plugin.controlGui().open(player);
+        }
+    }
+
+    private void populate(Inventory inventory, Player player) {
+        for (int slot = 0; slot < inventory.getSize(); slot++) {
+            inventory.setItem(slot, filler());
+        }
+
+        List<ViewSession> models = plugin.renderer().models(player);
+        int activeId = plugin.renderer().activeId(player);
+        for (int index = 0; index < models.size() && index < CLEAR_ALL; index++) {
+            ViewSession session = models.get(index);
+            boolean active = session.id() == activeId;
+            inventory.setItem(index, button(active ? Material.ENCHANTED_BOOK : Material.PAPER,
+                    "モデル #" + session.id() + ": " + session.crystal().name(),
+                    List.of(
+                            value("原子数: " + session.renderedAtoms()),
+                            value("座標: " + format(session.origin().getBlockX()) + ", "
+                                    + format(session.origin().getBlockY()) + ", "
+                                    + format(session.origin().getBlockZ())),
+                            value(active ? "選択中" : "左クリック: 選択"),
+                            value("Shift+左クリック: 削除"))));
+        }
+
+        inventory.setItem(CLEAR_ALL, button(Material.BARRIER, "全モデル消去",
+                List.of(value("Shift+クリックで全削除"))));
+        inventory.setItem(BACK, button(Material.OAK_DOOR, "戻る", List.of(value("メインメニューへ"))));
+    }
+
+    private ItemStack button(Material material, String name, List<Component> lore) {
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+        meta.displayName(Component.text(name, NamedTextColor.WHITE).decoration(TextDecoration.ITALIC, false));
+        meta.lore(lore);
+        meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private ItemStack filler() {
+        ItemStack item = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
+        ItemMeta meta = item.getItemMeta();
+        meta.displayName(Component.text(" ").decoration(TextDecoration.ITALIC, false));
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private Component value(String text) {
+        return Component.text(text, NamedTextColor.GRAY).decoration(TextDecoration.ITALIC, false);
+    }
+
+    private String format(int value) {
+        return Integer.toString(value);
+    }
+}

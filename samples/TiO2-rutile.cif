@@ -1,0 +1,21 @@
+data_TiO2_rutile
+_chemical_formula_sum 'Ti2 O4'
+_cell_length_a 4.594
+_cell_length_b 4.594
+_cell_length_c 2.959
+_cell_angle_alpha 90
+_cell_angle_beta 90
+_cell_angle_gamma 90
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+Ti1 Ti4+ 0.0 0.0 0.0 1.0
+Ti2 Ti4+ 0.5 0.5 0.5 1.0
+O1 O2- 0.305 0.305 0.0 1.0
+O2 O2- 0.695 0.695 0.0 1.0
+O3 O2- 0.805 0.195 0.5 1.0
+O4 O2- 0.195 0.805 0.5 1.0

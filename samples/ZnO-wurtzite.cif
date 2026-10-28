@@ -1,0 +1,19 @@
+data_ZnO_wurtzite
+_chemical_formula_sum 'Zn2 O2'
+_cell_length_a 3.2495
+_cell_length_b 3.2495
+_cell_length_c 5.2069
+_cell_angle_alpha 90
+_cell_angle_beta 90
+_cell_angle_gamma 120
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+Zn1 Zn2+ 0.333333 0.666667 0.0 1.0
+Zn2 Zn2+ 0.666667 0.333333 0.5 1.0
+O1 O2- 0.333333 0.666667 0.3819 1.0
+O2 O2- 0.666667 0.333333 0.8819 1.0
