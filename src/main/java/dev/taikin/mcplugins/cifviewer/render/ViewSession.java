@@ -43,6 +43,7 @@ public final class ViewSession {
     private boolean showUnitCell;
     private boolean showBonds;
     private boolean showLabels;
+    private boolean showPolyhedron;
     private List<Integer> selectedAtoms = List.of();
     private List<AtomMarker> atomMarkers = List.of();
     private RadiusMode radiusMode = RadiusMode.VDW;
@@ -135,6 +136,10 @@ public final class ViewSession {
 
     public boolean showLabels() {
         return showLabels;
+    }
+
+    public boolean showPolyhedron() {
+        return showPolyhedron;
     }
 
     public List<Integer> selectedAtoms() {
@@ -239,6 +244,10 @@ public final class ViewSession {
 
     void showLabels(boolean showLabels) {
         this.showLabels = showLabels;
+    }
+
+    void showPolyhedron(boolean showPolyhedron) {
+        this.showPolyhedron = showPolyhedron;
     }
 
     void selectedAtoms(List<Integer> selectedAtoms) {

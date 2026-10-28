@@ -199,6 +199,7 @@ public final class ModelStore {
         section.set("unit-cell", session.showUnitCell());
         section.set("bonds", session.showBonds());
         section.set("show-labels", session.showLabels());
+        section.set("polyhedron", session.showPolyhedron());
         section.set("radius-mode", session.radiusMode().name());
     }
 
@@ -282,6 +283,7 @@ public final class ModelStore {
         session.showUnitCell(section.getBoolean("unit-cell", false));
         session.showBonds(section.getBoolean("bonds", false));
         session.showLabels(section.getBoolean("show-labels", false));
+        session.showPolyhedron(section.getBoolean("polyhedron", false));
         try {
             session.radiusMode(ViewSession.RadiusMode.valueOf(
                     section.getString("radius-mode", "VDW").toUpperCase(Locale.ROOT)));

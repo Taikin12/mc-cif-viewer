@@ -27,6 +27,7 @@ public final class CifControlGui {
     private static final int SHARE = 7;
     private static final int UNIT_CELL = 8;
     private static final int LABELS = 10;
+    private static final int POLYHEDRON = 12;
     private static final int SCALE_UP = 9;
     private static final int REPEAT_UP = 11;
     private static final int ATOM_SCALE_UP = 13;
@@ -97,6 +98,7 @@ public final class CifControlGui {
                 case SHARE -> plugin.renderer().toggleSharedEdit(player);
                 case UNIT_CELL -> plugin.renderer().toggleUnitCell(player);
                 case LABELS -> plugin.renderer().toggleLabels(player);
+                case POLYHEDRON -> plugin.renderer().togglePolyhedron(player);
                 case RADIUS_MODE -> plugin.renderer().cycleRadiusMode(player);
                 case RESET -> plugin.renderer().reset(player);
                 case ROTATION_AXIS -> plugin.renderer().cycleRotationAxis(player);
@@ -154,6 +156,7 @@ public final class CifControlGui {
         inventory.setItem(SHARE, shareButton(session));
         inventory.setItem(UNIT_CELL, unitCellButton(session));
         inventory.setItem(LABELS, labelsButton(session));
+        inventory.setItem(POLYHEDRON, polyhedronButton(session));
         inventory.setItem(INFO, info(session));
         inventory.setItem(SCALE_UP, button(Material.LIME_STAINED_GLASS_PANE, "全体サイズ +",
                 List.of(value("ブロック/Å: " + number(session.blocksPerAngstrom())))));
@@ -210,6 +213,7 @@ public final class CifControlGui {
         lore.add(value("ボンド: " + (session.showBonds() ? "ON" : "OFF")));
         lore.add(value("ラベル: " + (session.showLabels() ? "ON" : "OFF")));
         lore.add(value("選択原子: " + session.selectedAtoms().size()));
+        lore.add(value("配位多面体: " + (session.showPolyhedron() ? "ON" : "OFF")));
         lore.add(value("充填半径: " + radiusModeName(session.radiusMode())));
         lore.add(value("回転軸: " + session.rotationAxis().name()));
         lore.add(value("原点: 結晶の0,0,0"));
@@ -233,6 +237,15 @@ public final class CifControlGui {
         }
         return button(Material.SNOWBALL, "表示: 球体",
                 List.of(value("クリックで空間充填に変更"), value("半径: 共有結合半径ベース")));
+    }
+
+    private ItemStack polyhedronButton(ViewSession session) {
+        if (session.showPolyhedron()) {
+            return button(Material.PRISMARINE_CRYSTALS, "配位多面体: ON",
+                    List.of(value("選択原子の近接原子をワイヤーフレーム表示"), value("クリックで非表示")));
+        }
+        return button(Material.PRISMARINE_SHARD, "配位多面体: OFF",
+                List.of(value("原子棒で中心原子を選択して表示"), value("近接原子の凸包エッジ")));
     }
 
     private ItemStack labelsButton(ViewSession session) {

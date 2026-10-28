@@ -53,6 +53,15 @@ public final class CifListener implements Listener {
             handleAtomInteract(player, action);
             return;
         }
+        if (wandType == CifWand.WandType.MENU) {
+            if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
+                event.setCancelled(true);
+                plugin.controlGui().open(player);
+            } else if (action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK) {
+                event.setCancelled(true);
+            }
+            return;
+        }
         if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
             event.setCancelled(true);
             plugin.controlGui().open(player);
@@ -85,10 +94,11 @@ public final class CifListener implements Listener {
         if (event.getHand() != EquipmentSlot.HAND) {
             return;
         }
-        if (plugin.wand().type(event.getPlayer().getInventory().getItemInMainHand())
-                == CifWand.WandType.ATOM) {
+        Player player = event.getPlayer();
+        CifWand.WandType heldType = plugin.wand().type(player.getInventory().getItemInMainHand());
+        if (heldType == CifWand.WandType.ATOM) {
             event.setCancelled(true);
-            handleAtomInteract(event.getPlayer(), Action.RIGHT_CLICK_AIR);
+            handleAtomInteract(player, Action.RIGHT_CLICK_AIR);
             return;
         }
         CrystalRenderer.ModelRef ref = plugin.renderer().modelRef(event.getRightClicked().getUniqueId());
@@ -96,7 +106,7 @@ public final class CifListener implements Listener {
             return;
         }
         event.setCancelled(true);
-        handleModelClick(event.getPlayer(), ref, true);
+        handleModelClick(player, ref, true, heldType);
     }
 
     @EventHandler
@@ -109,14 +119,16 @@ public final class CifListener implements Listener {
             return;
         }
         event.setCancelled(true);
-        if (plugin.wand().type(player.getInventory().getItemInMainHand()) == CifWand.WandType.ATOM) {
+        CifWand.WandType heldType = plugin.wand().type(player.getInventory().getItemInMainHand());
+        if (heldType == CifWand.WandType.ATOM) {
             handleAtomInteract(player, Action.LEFT_CLICK_AIR);
             return;
         }
-        handleModelClick(player, ref, false);
+        handleModelClick(player, ref, false, heldType);
     }
 
-    private void handleModelClick(Player player, CrystalRenderer.ModelRef ref, boolean rightClick) {
+    private void handleModelClick(Player player, CrystalRenderer.ModelRef ref, boolean rightClick,
+            CifWand.WandType heldType) {
         if (!plugin.renderer().select(player, ref.modelId())) {
             player.sendMessage(Component.text("モデル #" + ref.modelId() + " はありません。",
                     NamedTextColor.GRAY));
@@ -128,13 +140,13 @@ public final class CifListener implements Listener {
             player.sendActionBar(Component.text("選択中: モデル #" + selected.id() + " "
                     + selected.crystal().name() + shared, NamedTextColor.AQUA));
         }
-        if (!plugin.wand().has(player)) {
-            plugin.wand().give(player);
-            player.sendMessage(Component.text("CIF操作棒を入手しました。モデル #" + ref.modelId()
+        if (heldType == null && !plugin.wand().has(player)) {
+            plugin.wand().give(player, CifWand.WandType.MENU);
+            player.sendMessage(Component.text("CIFメニュー棒を入手しました。モデル #" + ref.modelId()
                     + " を選択しました。", NamedTextColor.GREEN));
             return;
         }
-        if (rightClick) {
+        if (rightClick || heldType == null || heldType == CifWand.WandType.MENU) {
             plugin.controlGui().open(player);
             return;
         }
@@ -176,8 +188,8 @@ public final class CifListener implements Listener {
         }
         ItemStack previous = player.getInventory().getItem(event.getPreviousSlot());
         ItemStack next = player.getInventory().getItem(event.getNewSlot());
-        if (plugin.wand().type(previous) != CifWand.WandType.OPERATION
-                && plugin.wand().type(next) != CifWand.WandType.OPERATION) {
+        if (plugin.wand().type(previous) != CifWand.WandType.VIEW
+                && plugin.wand().type(next) != CifWand.WandType.VIEW) {
             return;
         }
 

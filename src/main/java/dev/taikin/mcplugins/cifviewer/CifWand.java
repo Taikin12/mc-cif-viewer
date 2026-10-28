@@ -16,7 +16,8 @@ import org.bukkit.persistence.PersistentDataType;
 public final class CifWand {
 
     public enum WandType {
-        OPERATION,
+        MENU,
+        VIEW,
         ATOM
     }
 
@@ -29,31 +30,47 @@ public final class CifWand {
     }
 
     public ItemStack create() {
-        return create(WandType.OPERATION);
+        return create(WandType.MENU);
     }
 
     public ItemStack create(WandType type) {
-        ItemStack item = new ItemStack(type == WandType.ATOM ? Material.END_ROD : Material.BLAZE_ROD);
+        Material material = switch (type) {
+            case MENU -> Material.STICK;
+            case VIEW -> Material.BLAZE_ROD;
+            case ATOM -> Material.END_ROD;
+        };
+        String name = switch (type) {
+            case MENU -> "CIFメニュー棒";
+            case VIEW -> "CIFビュー棒";
+            case ATOM -> "CIF原子棒";
+        };
+        NamedTextColor color = switch (type) {
+            case MENU -> NamedTextColor.GOLD;
+            case VIEW -> NamedTextColor.YELLOW;
+            case ATOM -> NamedTextColor.AQUA;
+        };
+        ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
-        meta.displayName(Component.text(type == WandType.ATOM ? "CIF原子棒" : "CIF操作棒",
-                        type == WandType.ATOM ? NamedTextColor.AQUA : NamedTextColor.GOLD)
-                .decoration(TextDecoration.ITALIC, false));
-        meta.lore(type == WandType.ATOM
-                ? List.of(
-                        lore("右クリック: 原子を選択/追加"),
-                        lore("左クリック: 選択解除"),
-                        lore("スニーク+右クリック: 最後の選択を解除"),
-                        lore("2原子: 距離 / 3原子: 角度 / 4原子: 二面角"))
-                : List.of(
-                        lore("右クリック: メニュー"),
-                        lore("モデルをクリック: メニュー"),
-                        lore("左クリック(空): 選択軸で回転"),
-                        lore("左クリック(ブロック面): 回転軸を変更"),
-                        lore("スニーク+左クリック(ブロック): 原点(0,0,0)設定"),
-                        lore("スニーク+スクロール: 全体サイズ")));
+        meta.displayName(Component.text(name, color).decoration(TextDecoration.ITALIC, false));
+        meta.lore(switch (type) {
+            case MENU -> List.of(
+                    lore("右クリック: メニュー"),
+                    lore("モデルをクリック: 選択 / メニュー"));
+            case VIEW -> List.of(
+                    lore("右クリック: メニュー"),
+                    lore("左クリック(空): 選択軸で回転"),
+                    lore("左クリック(ブロック面): 回転軸を変更"),
+                    lore("スニーク+左クリック(ブロック): 原点(0,0,0)設定"),
+                    lore("スニーク+スクロール: 全体サイズ"));
+            case ATOM -> List.of(
+                    lore("右クリック: 原子を選択/追加"),
+                    lore("左クリック: 選択解除"),
+                    lore("スニーク+右クリック: 最後の選択を解除"),
+                    lore("2原子: 距離 / 3原子: 角度 / 4原子: 二面角"));
+        });
         meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
         meta.getPersistentDataContainer().set(typeKey, PersistentDataType.STRING, type.name());
-        if (type == WandType.OPERATION) {
+        if (type == WandType.VIEW) {
             meta.getPersistentDataContainer().set(legacyKey, PersistentDataType.BYTE, (byte) 1);
         }
         item.setItemMeta(meta);
@@ -66,14 +83,17 @@ public final class CifWand {
         }
         String configured = item.getItemMeta().getPersistentDataContainer().get(typeKey, PersistentDataType.STRING);
         if (configured != null) {
+            if (configured.equalsIgnoreCase("OPERATION")) {
+                return WandType.VIEW;
+            }
             try {
-                return WandType.valueOf(configured);
+                return WandType.valueOf(configured.toUpperCase(java.util.Locale.ROOT));
             } catch (IllegalArgumentException ignored) {
                 return null;
             }
         }
         Byte legacy = item.getItemMeta().getPersistentDataContainer().get(legacyKey, PersistentDataType.BYTE);
-        return legacy != null && legacy == 1 ? WandType.OPERATION : null;
+        return legacy != null && legacy == 1 ? WandType.VIEW : null;
     }
 
     public boolean isWand(ItemStack item) {
@@ -99,7 +119,7 @@ public final class CifWand {
     }
 
     public boolean giveIfMissing(Player player) {
-        return giveIfMissing(player, WandType.OPERATION);
+        return giveIfMissing(player, WandType.MENU);
     }
 
     public boolean giveIfMissing(Player player, WandType type) {
@@ -111,7 +131,7 @@ public final class CifWand {
     }
 
     public void give(Player player) {
-        give(player, WandType.OPERATION);
+        give(player, WandType.MENU);
     }
 
     public void give(Player player, WandType type) {

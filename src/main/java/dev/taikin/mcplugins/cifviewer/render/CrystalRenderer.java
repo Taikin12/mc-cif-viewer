@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -298,6 +299,7 @@ public final class CrystalRenderer {
         session.showUnitCell(false);
         session.showBonds(false);
         session.showLabels(false);
+        session.showPolyhedron(false);
         session.selectedAtoms(List.of());
         session.radiusMode(ViewSession.RadiusMode.VDW);
         session.rotation(0.0, 0.0, 0.0);
@@ -341,6 +343,15 @@ public final class CrystalRenderer {
     public void toggleLabels(Player player) {
         ViewSession session = requireSession(player);
         session.showLabels(!session.showLabels());
+        refresh(player, session);
+    }
+
+    public void togglePolyhedron(Player player) {
+        ViewSession session = requireSession(player);
+        if (!session.showPolyhedron() && session.selectedAtoms().isEmpty()) {
+            throw new IllegalStateException("CIF原子棒で中心原子を選択してください。");
+        }
+        session.showPolyhedron(!session.showPolyhedron());
         refresh(player, session);
     }
 
@@ -712,6 +723,41 @@ public final class CrystalRenderer {
                 }
             }
 
+            if (session.showPolyhedron() && !selected.isEmpty()) {
+                int centerIndex = selected.getFirst();
+                if (centerIndex >= 0 && centerIndex < markers.size()) {
+                    ViewSession.AtomMarker center = markers.get(centerIndex);
+                    List<PolyhedronVertex> vertices = coordinationVertices(
+                            markers, center, lattice, scale, rotationX, rotationY, rotationZ);
+                    List<Vector> points = vertices.stream().map(PolyhedronVertex::position).toList();
+                    for (PolyhedronGeometry.Edge edge : PolyhedronGeometry.convexHullEdges(points)) {
+                        Vector start = points.get(edge.first()).clone();
+                        Vector end = points.get(edge.second()).clone();
+                        Vector direction = end.clone().subtract(start);
+                        double length = direction.length();
+                        if (length < 1.0e-6) {
+                            continue;
+                        }
+                        Location midpoint = new Location(world,
+                                origin.getX() + (start.getX() + end.getX()) / 2.0,
+                                origin.getY() + (start.getY() + end.getY()) / 2.0,
+                                origin.getZ() + (start.getZ() + end.getZ()) / 2.0);
+                        ItemDisplay stick = spawnStick(world, midpoint, direction, length, 0.065,
+                                new int[] {255, 196, 64});
+                        entities.add(stick.getUniqueId());
+                    }
+                    for (Vector point : points) {
+                        minX = Math.min(minX, point.getX() - 0.04);
+                        minY = Math.min(minY, point.getY() - 0.04);
+                        minZ = Math.min(minZ, point.getZ() - 0.04);
+                        maxX = Math.max(maxX, point.getX() + 0.04);
+                        maxY = Math.max(maxY, point.getY() + 0.04);
+                        maxZ = Math.max(maxZ, point.getZ() + 0.04);
+                        renderedMaxY = Math.max(renderedMaxY, point.getY());
+                    }
+                }
+            }
+
             if (session.showUnitCell()) {
                 Vector a = latticeVector(lattice, 1.0, 0.0, 0.0, scale);
                 Vector b = latticeVector(lattice, 0.0, 1.0, 0.0, scale);
@@ -1002,6 +1048,58 @@ public final class CrystalRenderer {
         return origin;
     }
 
+    private List<PolyhedronVertex> coordinationVertices(List<ViewSession.AtomMarker> markers,
+            ViewSession.AtomMarker center, Lattice lattice, double scale,
+            double rotationX, double rotationY, double rotationZ) {
+        Vector a = latticeVector(lattice, 1.0, 0.0, 0.0, scale);
+        Vector b = latticeVector(lattice, 0.0, 1.0, 0.0, scale);
+        Vector c = latticeVector(lattice, 0.0, 0.0, 1.0, scale);
+        rotate(a, rotationX, rotationY, rotationZ);
+        rotate(b, rotationX, rotationY, rotationZ);
+        rotate(c, rotationX, rotationY, rotationZ);
+
+        Map<PointKey, PolyhedronVertex> candidates = new LinkedHashMap<>();
+        double nearest = Double.POSITIVE_INFINITY;
+        for (ViewSession.AtomMarker marker : markers) {
+            double covalentLimit = (ElementInfo.radius(center.element())
+                    + ElementInfo.radius(marker.element())) * scale * 1.2;
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        Vector point = marker.position().clone()
+                                .add(a.clone().multiply(dx))
+                                .add(b.clone().multiply(dy))
+                                .add(c.clone().multiply(dz));
+                        double distance = point.distance(center.position());
+                        if (distance < 1.0e-5 || distance > covalentLimit) {
+                            continue;
+                        }
+                        PointKey key = PointKey.of(point);
+                        candidates.putIfAbsent(key, new PolyhedronVertex(marker.element(), point));
+                        nearest = Math.min(nearest, distance);
+                    }
+                }
+            }
+        }
+        if (!Double.isFinite(nearest)) {
+            return List.of();
+        }
+        double shellLimit = nearest * 1.15;
+        List<PolyhedronVertex> neighbors = new ArrayList<>();
+        for (PolyhedronVertex candidate : candidates.values()) {
+            if (candidate.position().distance(center.position()) <= shellLimit) {
+                neighbors.add(candidate);
+            }
+        }
+        return neighbors;
+    }
+
+    private void rotate(Vector vector, double rotationX, double rotationY, double rotationZ) {
+        vector.rotateAroundX(rotationX);
+        vector.rotateAroundY(rotationY);
+        vector.rotateAroundZ(rotationZ);
+    }
+
     private Vector latticeVector(Lattice lattice, double x, double y, double z, double scale) {
         double[] cartesian = lattice.toCartesian(x, y, z);
         return new Vector(cartesian[0] * scale, cartesian[2] * scale, cartesian[1] * scale);
@@ -1139,5 +1237,17 @@ public final class CrystalRenderer {
     }
 
     private record RawAtom(Crystal.Atom atom, double x, double y, double z) {
+    }
+
+    private record PolyhedronVertex(String element, Vector position) {
+    }
+
+    private record PointKey(long x, long y, long z) {
+        private static PointKey of(Vector point) {
+            return new PointKey(
+                    Math.round(point.getX() * 10000.0),
+                    Math.round(point.getY() * 10000.0),
+                    Math.round(point.getZ() * 10000.0));
+        }
     }
 }
