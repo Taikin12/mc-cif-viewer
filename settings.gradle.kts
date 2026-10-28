@@ -1,1 +1,1 @@
-rootProject.name = "cif-viewer"
+rootProject.name = "mc-cif-viewer"

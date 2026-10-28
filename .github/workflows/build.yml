@@ -22,7 +22,7 @@ jobs:
       - run: ./gradlew build
       - uses: actions/upload-artifact@v7
         with:
-          name: cif-viewer
+          name: mc-cif-viewer
           path: |
             build/libs/*.jar
             !build/libs/*-plain.jar
