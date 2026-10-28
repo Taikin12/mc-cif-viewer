@@ -1,4 +1,6 @@
-# Crystallography Open Database (COD) 9009087.
+# Crystallography Open Database (COD) 9009087
+# Wyckoff, R. W. G., Crystal Structures, 2nd ed., Vol. 1, 1963, pp. 239-444.
+# COD data are CC0; see https://www.crystallography.net/cod/9009087.html
 data_TiO2_brookite
 _chemical_formula_sum 'Ti1 O2'
 _chemical_name_mineral Brookite

@@ -164,6 +164,12 @@ Materials Project を使う場合、[Materials Project](https://next-gen.materia
 - 単位胞は基本セル 1 個分の表示です。
 - モデルの所有者・共有編集権限は現在プレイヤー単位です。モデル単位の共有設定は今後追加予定です。
 
+## サンプル CIF
+
+`samples/` に動作確認用の CIF を置いています。TiO2-anatase / TiO2-brookite は
+Crystallography Open Database (COD) の CC0 データを使用しており、出典と著者を
+`samples/README.md` に記載しています。
+
 ## 開発
 
 ```text

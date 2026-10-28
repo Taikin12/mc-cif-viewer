@@ -1,4 +1,8 @@
-# Crystallography Open Database (COD) 9008213; data at 25 C.
+# Crystallography Open Database (COD) 9008213
+# Horn, M.; Schwerdtfeger, C. F.; Meagher, E. P.
+# "Refinement of the structure of anatase at several temperatures",
+# Zeitschrift fur Kristallographie 136 (1972) 273-281.
+# Data at 25 C. COD data are CC0; see https://www.crystallography.net/cod/9008213.html
 data_TiO2_anatase
 _chemical_formula_sum 'Ti1 O2'
 _chemical_name_mineral Anatase
