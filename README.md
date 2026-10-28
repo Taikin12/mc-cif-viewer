@@ -12,6 +12,7 @@ Minecraft Paper 上で CIF 結晶構造を 3D 表示するプラグインです�
 - 単位胞のワイヤーフレーム
 - 原子間の結合線（最近接距離ベースの簡易判定）
 - 原子ラベル、原子選択、距離・角度・二面角の測定
+- CIF からの簡易 XRD シミュレーション → 地図表示
 - 軸ごとのリピート（超胞）設定
 - 回転、原点設定、全体サイズ・原子サイズ調整
 - 全プレイヤー共有の複数モデル（最大 8 個、`max-models`）
@@ -100,6 +101,7 @@ build/cifviewer-resourcepack.zip
 | `/cif fetch <mp-id>` | Materials Project から追加 |
 | `/cif fetchat <scale> <repeat> <mp-id>` | 倍率・リピート指定で取得 |
 | `/cif cod <id>` | COD から CIF を取得して保存・表示 |
+| `/cif xrd <file>` | CIF から XRD シミュレーション地図を作成 |
 | `/cif codat <scale> <repeat> <id>` | 倍率・リピート指定で COD から取得 |
 | `/cif models` | 全モデル一覧 |
 | `/cif select <id>` | 操作対象モデルを選択 |
@@ -180,6 +182,12 @@ build/cifviewer-resourcepack.zip
 | `cod.base-url` | COD のベース URL |
 | `cod.timeout-seconds` | COD 取得のタイムアウト |
 | `cod.max-bytes` | COD CIF の最大サイズ |
+| `xrd.wavelength` | X 線波長（Å） |
+| `xrd.two-theta-min` | 2θ の下限 |
+| `xrd.two-theta-max` | 2θ の上限 |
+| `xrd.step` | プロファイルの刻み |
+| `xrd.fwhm` | ピーク幅（FWHM） |
+| `xrd.max-hkl` | hkl の最大範囲 |
 
 Materials Project を使う場合、[Materials Project](https://next-gen.materialsproject.org/) で API key を取得し、`materials-project.api-key` に設定して `/cif reload` してください。API key はチャットやリポジトリに書かないでください。
 
@@ -216,6 +224,8 @@ COD は `/cif cod <id>` で取得できます。取得した CIF は `plugins/Ci
 - 結合判定は最近接距離ベースの簡易ヒューリスティックです。周期境界をまたぐ結合は表示範囲内の原子間に限定されます。
 - 単位胞は基本セル 1 個分の表示です。
 - 全原子ラベルは最大 200 個までです。選択原子のラベルは常に表示されます。
+- XRD は Phase 1 の簡易シミュレーションです。ピーク位置は Bragg 則、強度は構造因子＋原子番号近似＋Lorentz–Polarization で、Kα1/Kα2・バックグラウンド・優先配向などは未対応です。
+- XRD 地図は 128×128 の 1 枚です。
 - 原子選択・測定はモデル単位の共有状態です。
 - 共有編集はモデル単位の ON/OFF と `cifviewer.edit.shared` 権限で制御します。
 

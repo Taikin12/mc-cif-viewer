@@ -40,6 +40,12 @@ public final class CifConfig {
     private final String codBaseUrl;
     private final int codTimeoutSeconds;
     private final int codMaxBytes;
+    private final double xrdWavelength;
+    private final double xrdTwoThetaMin;
+    private final double xrdTwoThetaMax;
+    private final double xrdStep;
+    private final double xrdFwhm;
+    private final int xrdMaxHkl;
 
     public CifConfig(FileConfiguration configuration, File dataFolder, Logger logger) {
         List<String> configuredSources = configuration.getStringList("sources");
@@ -121,6 +127,12 @@ public final class CifConfig {
                 "https://www.crystallography.net/cod/").trim();
         this.codTimeoutSeconds = clamp(configuration.getInt("cod.timeout-seconds", 20), 1, 120);
         this.codMaxBytes = clamp(configuration.getInt("cod.max-bytes", 5 * 1024 * 1024), 1024, 20 * 1024 * 1024);
+        this.xrdWavelength = clamp(configuration.getDouble("xrd.wavelength", 1.5406), 0.1, 10.0);
+        this.xrdTwoThetaMin = clamp(configuration.getDouble("xrd.two-theta-min", 10.0), 0.1, 179.0);
+        this.xrdTwoThetaMax = clamp(configuration.getDouble("xrd.two-theta-max", 90.0), 0.2, 179.9);
+        this.xrdStep = clamp(configuration.getDouble("xrd.step", 0.02), 0.001, 0.2);
+        this.xrdFwhm = clamp(configuration.getDouble("xrd.fwhm", 0.2), 0.01, 5.0);
+        this.xrdMaxHkl = clamp(configuration.getInt("xrd.max-hkl", 40), 1, 80);
     }
 
     public List<Path> sourceDirectories() {
@@ -204,6 +216,30 @@ public final class CifConfig {
 
     public int codMaxBytes() {
         return codMaxBytes;
+    }
+
+    public double xrdWavelength() {
+        return xrdWavelength;
+    }
+
+    public double xrdTwoThetaMin() {
+        return xrdTwoThetaMin;
+    }
+
+    public double xrdTwoThetaMax() {
+        return xrdTwoThetaMax;
+    }
+
+    public double xrdStep() {
+        return xrdStep;
+    }
+
+    public double xrdFwhm() {
+        return xrdFwhm;
+    }
+
+    public int xrdMaxHkl() {
+        return xrdMaxHkl;
     }
 
     private static int[] parseColor(String value, Logger logger, String key) {

@@ -115,6 +115,25 @@ public final class Lattice {
         };
     }
 
+    public double dSpacing(int h, int k, int l) {
+        double[] a = toCartesian(1.0, 0.0, 0.0);
+        double[] b = toCartesian(0.0, 1.0, 0.0);
+        double[] c = toCartesian(0.0, 0.0, 1.0);
+        double[] bxc = cross(b, c);
+        double volume = dot(a, bxc);
+        if (Math.abs(volume) < EPSILON) {
+            throw new IllegalArgumentException("Lattice volume is zero.");
+        }
+        double[] astar = scale(bxc, 1.0 / volume);
+        double[] bstar = scale(cross(c, a), 1.0 / volume);
+        double[] cstar = scale(cross(a, b), 1.0 / volume);
+        double gx = h * astar[0] + k * bstar[0] + l * cstar[0];
+        double gy = h * astar[1] + k * bstar[1] + l * cstar[1];
+        double gz = h * astar[2] + k * bstar[2] + l * cstar[2];
+        double g = Math.sqrt(gx * gx + gy * gy + gz * gz);
+        return g < EPSILON ? 0.0 : 1.0 / g;
+    }
+
     public double[] toFractional(double x, double y, double z) {
         return new double[] {
             inverse[0][0] * x + inverse[0][1] * y + inverse[0][2] * z,
@@ -152,6 +171,18 @@ public final class Lattice {
         return m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
                 - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
                 + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+    }
+
+    private static double[] cross(double[] u, double[] v) {
+        return new double[] {
+            u[1] * v[2] - u[2] * v[1],
+            u[2] * v[0] - u[0] * v[2],
+            u[0] * v[1] - u[1] * v[0]
+        };
+    }
+
+    private static double[] scale(double[] v, double factor) {
+        return new double[] {v[0] * factor, v[1] * factor, v[2] * factor};
     }
 
     private static double length(double[] v) {

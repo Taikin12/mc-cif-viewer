@@ -13,14 +13,17 @@ public final class ElementInfo {
     private static final Map<String, Double> RADII = new HashMap<>();
     private static final Map<String, Double> VDW_RADII = new HashMap<>();
     private static final Map<String, Double> IONIC_RADII = new HashMap<>();
+    private static final Map<String, Integer> ATOMIC_NUMBERS = new HashMap<>();
 
     static {
         String symbols = "H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni Cu Zn "
                 + "Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs Ba La Ce Pr Nd "
                 + "Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb Bi Po At Rn Fr Ra Ac Th Pa "
                 + "U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt Ds Rg Cn Nh Fl Mc Lv Ts Og";
+        int atomicNumber = 1;
         for (String symbol : symbols.split(" ")) {
             ELEMENTS.add(symbol);
+            ATOMIC_NUMBERS.put(symbol, atomicNumber++);
         }
 
         color("H", 255, 255, 255);
@@ -502,6 +505,10 @@ public final class ElementInfo {
         }
         double hue = Math.floorMod(element.toLowerCase(Locale.ROOT).hashCode(), 360);
         return hslToRgb(hue / 360.0, 0.55, 0.62);
+    }
+
+    public static int atomicNumber(String element) {
+        return ATOMIC_NUMBERS.getOrDefault(element, 0);
     }
 
     public static double radius(String element) {

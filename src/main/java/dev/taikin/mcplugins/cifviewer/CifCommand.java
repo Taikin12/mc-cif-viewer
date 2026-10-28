@@ -10,6 +10,9 @@ import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.mojang.brigadier.tree.LiteralCommandNode;
 import dev.taikin.mcplugins.cifviewer.cif.CifParser;
 import dev.taikin.mcplugins.cifviewer.model.Crystal;
+import dev.taikin.mcplugins.cifviewer.xrd.XrdMapRenderer;
+import dev.taikin.mcplugins.cifviewer.xrd.XrdPattern;
+import dev.taikin.mcplugins.cifviewer.xrd.XrdSimulator;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
 import java.io.IOException;
@@ -25,8 +28,12 @@ import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.MapMeta;
+import org.bukkit.map.MapView;
 
 public final class CifCommand {
 
@@ -100,6 +107,11 @@ public final class CifCommand {
                                                         Long.toString(LongArgumentType.getLong(context, "id")),
                                                         DoubleArgumentType.getDouble(context, "scale"),
                                                         IntegerArgumentType.getInteger(context, "repeat")))))))
+                .then(Commands.literal("xrd")
+                        .then(Commands.argument("file", StringArgumentType.greedyString())
+                                .suggests(this::suggestFiles)
+                                .executes(context -> xrd(sender(context),
+                                        StringArgumentType.getString(context, "file")))))
                 .then(Commands.literal("models")
                         .executes(context -> models(sender(context))))
                 .then(Commands.literal("select")
@@ -141,6 +153,7 @@ public final class CifCommand {
         sender.sendMessage(command("/cif fetchat ", "倍率と繰り返しを指定して追加", false));
         sender.sendMessage(command("/cif cod ", "COD ID から取得して保存", false));
         sender.sendMessage(command("/cif codat ", "倍率・繰り返し指定で COD から取得", false));
+        sender.sendMessage(command("/cif xrd ", "CIF から XRD シミュレーション地図を作成", false));
         sender.sendMessage(command("/cif models", "全モデル一覧", true));
         sender.sendMessage(command("/cif select ", "操作するモデルを選択", false));
         sender.sendMessage(command("/cif remove ", "指定モデルを削除（所有者/管理者）", false));
@@ -406,6 +419,69 @@ public final class CifCommand {
         } catch (RuntimeException e) {
             player.sendMessage(Component.text("Could not display COD CIF: " + message(e),
                     NamedTextColor.RED));
+            return 0;
+        }
+    }
+
+    private int xrd(CommandSender sender, String file) {
+        Player player = player(sender);
+        if (player == null) {
+            return 0;
+        }
+        Path path = plugin.repository().resolve(file);
+        if (path == null) {
+            sender.sendMessage(Component.text("CIF not found or ambiguous: " + file, NamedTextColor.RED));
+            return 0;
+        }
+        try {
+            long size = Files.size(path);
+            if (size > MAX_FILE_SIZE) {
+                sender.sendMessage(Component.text("CIF file is too large (" + size + " bytes).",
+                        NamedTextColor.RED));
+                return 0;
+            }
+            String text = Files.readString(path, StandardCharsets.UTF_8);
+            Crystal crystal = new CifParser().parse(path.getFileName().toString(), text);
+            XrdPattern pattern = XrdSimulator.simulate(crystal,
+                    plugin.config().xrdWavelength(),
+                    plugin.config().xrdTwoThetaMin(),
+                    plugin.config().xrdTwoThetaMax(),
+                    plugin.config().xrdStep(),
+                    plugin.config().xrdFwhm(),
+                    plugin.config().xrdMaxHkl());
+
+            MapView view = Bukkit.createMap(player.getWorld());
+            for (var renderer : List.copyOf(view.getRenderers())) {
+                view.removeRenderer(renderer);
+            }
+            view.setScale(MapView.Scale.CLOSEST);
+            view.setTrackingPosition(false);
+            view.addRenderer(new XrdMapRenderer(pattern));
+
+            ItemStack map = new ItemStack(Material.FILLED_MAP);
+            MapMeta meta = (MapMeta) map.getItemMeta();
+            meta.setMapView(view);
+            meta.displayName(Component.text("XRD: " + crystal.name(), NamedTextColor.AQUA));
+            meta.lore(List.of(
+                    Component.text("Simulated (approximate) pattern", NamedTextColor.GRAY),
+                    Component.text("lambda = " + pattern.wavelength() + " A", NamedTextColor.GRAY),
+                    Component.text("2theta = " + pattern.twoThetaMin() + " - "
+                            + pattern.twoThetaMax() + " deg", NamedTextColor.GRAY),
+                    Component.text("reflections: " + pattern.reflections(), NamedTextColor.GRAY)));
+            map.setItemMeta(meta);
+            var leftover = player.getInventory().addItem(map);
+            for (ItemStack item : leftover.values()) {
+                player.getWorld().dropItemNaturally(player.getLocation(), item);
+            }
+            player.sendMessage(Component.text("XRD map: " + crystal.name() + " ("
+                    + pattern.reflections() + " reflections, approximate intensities).",
+                    NamedTextColor.GREEN));
+            return 1;
+        } catch (IOException e) {
+            sender.sendMessage(Component.text("Could not read CIF: " + e.getMessage(), NamedTextColor.RED));
+            return 0;
+        } catch (RuntimeException e) {
+            sender.sendMessage(Component.text("Could not simulate XRD: " + message(e), NamedTextColor.RED));
             return 0;
         }
     }
