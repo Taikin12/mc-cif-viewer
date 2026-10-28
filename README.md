@@ -103,7 +103,8 @@ build/cifviewer-resourcepack.zip
 | `/cif cod <id>` | COD から CIF を取得して保存・表示 |
 | `/cif xrd` | 表示中モデルから XRD 地図を作成（config の波長・範囲） |
 | `/cif xrd <file>` | CIF から XRD シミュレーション地図を作成 |
-| `/cif xrdat <source> <min> <max> [file]` | 線源と 2θ 範囲を指定して XRD 地図を作成（file 省略時は表示中モデル） |
+| `/cif xrdat <source> <min> <max> [file]` | 位置引数で線源と 2θ 範囲を指定 |
+| `/cif xrdopt [key=value ...]` | 名前付きオプションで XRD 地図を作成 |
 | `/cif codat <scale> <repeat> <id>` | 倍率・リピート指定で COD から取得 |
 | `/cif models` | 全モデル一覧 |
 | `/cif select <id>` | 操作対象モデルを選択 |
@@ -197,9 +198,12 @@ build/cifviewer-resourcepack.zip
 ```text
 /cif xrd
 /cif xrd NaCl.cif
-/cif xrdat Cu 5 120
 /cif xrdat Cu 5 120 NaCl.cif
+/cif xrdopt source=Cu range=5:120
+/cif xrdopt wavelength=1.5406 min=10 max=90 file=NaCl.cif
 ```
+
+`xrdopt` は `source` / `wavelength`、`range=min:max` または `min` / `max`、`file`、`step`、`fwhm`、`maxhkl` を指定できます。`file` を省略すると表示中モデルを使います。
 
 Materials Project を使う場合、[Materials Project](https://next-gen.materialsproject.org/) で API key を取得し、`materials-project.api-key` に設定して `/cif reload` してください。API key はチャットやリポジトリに書かないでください。
 

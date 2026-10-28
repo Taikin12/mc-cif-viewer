@@ -20,8 +20,11 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import net.kyori.adventure.text.Component;
@@ -114,6 +117,11 @@ public final class CifCommand {
                                 .suggests(this::suggestFiles)
                                 .executes(context -> xrd(sender(context),
                                         StringArgumentType.getString(context, "file"), null, null, null))))
+                .then(Commands.literal("xrdopt")
+                        .executes(context -> xrdOptions(sender(context), ""))
+                        .then(Commands.argument("options", StringArgumentType.greedyString())
+                                .executes(context -> xrdOptions(sender(context),
+                                        StringArgumentType.getString(context, "options")))))
                 .then(Commands.literal("xrdat")
                         .then(Commands.argument("source", StringArgumentType.word())
                                 .then(Commands.argument("min", DoubleArgumentType.doubleArg(0.1, 179.0))
@@ -173,6 +181,7 @@ public final class CifCommand {
         sender.sendMessage(command("/cif xrd", "表示中モデルから XRD 地図を作成", true));
         sender.sendMessage(command("/cif xrd ", "CIF から XRD シミュレーション地図を作成", false));
         sender.sendMessage(command("/cif xrdat ", "線源と 2θ 範囲を指定して XRD 地図を作成", false));
+        sender.sendMessage(command("/cif xrdopt ", "source=Cu / range=10:90 形式の指定", false));
         sender.sendMessage(command("/cif models", "全モデル一覧", true));
         sender.sendMessage(command("/cif select ", "操作するモデルを選択", false));
         sender.sendMessage(command("/cif remove ", "指定モデルを削除（所有者/管理者）", false));
@@ -442,7 +451,130 @@ public final class CifCommand {
         }
     }
 
+    private int xrdOptions(CommandSender sender, String rawOptions) {
+        Map<String, String> options;
+        try {
+            options = parseXrdOptions(rawOptions);
+        } catch (IllegalArgumentException e) {
+            sender.sendMessage(Component.text(e.getMessage(), NamedTextColor.RED));
+            return 0;
+        }
+
+        String source = options.remove("source");
+        String wavelength = options.remove("wavelength");
+        if (source != null && wavelength != null) {
+            sender.sendMessage(Component.text("Use either source= or wavelength=, not both.",
+                    NamedTextColor.RED));
+            return 0;
+        }
+        if (wavelength != null) {
+            source = wavelength;
+        }
+
+        Double min = null;
+        Double max = null;
+        String range = options.remove("range");
+        try {
+            if (range != null) {
+                String[] bounds = range.split(":", -1);
+                if (bounds.length != 2) {
+                    throw new IllegalArgumentException("Use range=min:max (for example range=10:90).");
+                }
+                min = Double.parseDouble(bounds[0]);
+                max = Double.parseDouble(bounds[1]);
+            }
+            if (options.containsKey("min")) {
+                if (min != null) {
+                    throw new IllegalArgumentException("Use range= or min=/max=, not both.");
+                }
+                min = Double.parseDouble(options.remove("min"));
+            }
+            if (options.containsKey("max")) {
+                if (max != null) {
+                    throw new IllegalArgumentException("Use range= or min=/max=, not both.");
+                }
+                max = Double.parseDouble(options.remove("max"));
+            }
+            Double step = options.containsKey("step")
+                    ? Double.parseDouble(options.remove("step")) : null;
+            Double fwhm = options.containsKey("fwhm")
+                    ? Double.parseDouble(options.remove("fwhm")) : null;
+            Integer maxHkl = options.containsKey("maxhkl")
+                    ? Integer.parseInt(options.remove("maxhkl")) : null;
+            String file = options.remove("file");
+            if (!options.isEmpty()) {
+                throw new IllegalArgumentException("Unknown XRD option: " + options.keySet().iterator().next());
+            }
+            return xrd(sender, file, source, min, max, step, fwhm, maxHkl);
+        } catch (NumberFormatException e) {
+            sender.sendMessage(Component.text("XRD numeric options must be valid numbers.",
+                    NamedTextColor.RED));
+            return 0;
+        } catch (IllegalArgumentException e) {
+            sender.sendMessage(Component.text(e.getMessage(), NamedTextColor.RED));
+            return 0;
+        }
+    }
+
+    private Map<String, String> parseXrdOptions(String raw) {
+        List<String> tokens = tokenizeOptions(raw);
+        Map<String, String> options = new LinkedHashMap<>();
+        for (String token : tokens) {
+            int separator = token.indexOf('=');
+            if (separator <= 0 || separator == token.length() - 1) {
+                throw new IllegalArgumentException("Use key=value options, e.g. source=Cu range=10:90.");
+            }
+            String key = token.substring(0, separator).toLowerCase(Locale.ROOT);
+            String value = token.substring(separator + 1);
+            if (!List.of("source", "wavelength", "range", "min", "max", "step", "fwhm",
+                    "maxhkl", "file").contains(key)) {
+                throw new IllegalArgumentException("Unknown XRD option: " + key);
+            }
+            if (options.putIfAbsent(key, value) != null) {
+                throw new IllegalArgumentException("Duplicate XRD option: " + key);
+            }
+        }
+        return options;
+    }
+
+    private List<String> tokenizeOptions(String raw) {
+        List<String> tokens = new ArrayList<>();
+        StringBuilder token = new StringBuilder();
+        char quote = 0;
+        for (int index = 0; index < raw.length(); index++) {
+            char current = raw.charAt(index);
+            if (quote != 0) {
+                if (current == quote) {
+                    quote = 0;
+                } else {
+                    token.append(current);
+                }
+            } else if (current == 39 || current == '"') {
+                quote = current;
+            } else if (Character.isWhitespace(current)) {
+                if (!token.isEmpty()) {
+                    tokens.add(token.toString());
+                    token.setLength(0);
+                }
+            } else {
+                token.append(current);
+            }
+        }
+        if (quote != 0) {
+            throw new IllegalArgumentException("Unclosed quote in XRD options.");
+        }
+        if (!token.isEmpty()) {
+            tokens.add(token.toString());
+        }
+        return tokens;
+    }
+
     private int xrd(CommandSender sender, String file, String source, Double min, Double max) {
+        return xrd(sender, file, source, min, max, null, null, null);
+    }
+
+    private int xrd(CommandSender sender, String file, String source, Double min, Double max,
+            Double step, Double fwhm, Integer maxHkl) {
         Player player = player(sender);
         if (player == null) {
             return 0;
@@ -487,9 +619,9 @@ public final class CifCommand {
                     wavelength,
                     twoThetaMin,
                     twoThetaMax,
-                    plugin.config().xrdStep(),
-                    plugin.config().xrdFwhm(),
-                    plugin.config().xrdMaxHkl());
+                    step == null ? plugin.config().xrdStep() : step,
+                    fwhm == null ? plugin.config().xrdFwhm() : fwhm,
+                    maxHkl == null ? plugin.config().xrdMaxHkl() : maxHkl);
 
             MapView view = Bukkit.createMap(player.getWorld());
             for (var renderer : List.copyOf(view.getRenderers())) {
