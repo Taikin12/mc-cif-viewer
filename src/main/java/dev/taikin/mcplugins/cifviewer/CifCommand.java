@@ -46,7 +46,13 @@ public final class CifCommand {
                 .then(Commands.literal("help")
                         .executes(context -> help(sender(context))))
                 .then(Commands.literal("wand")
-                        .executes(context -> wand(sender(context))))
+                        .executes(context -> wand(sender(context), CifWand.WandType.OPERATION))
+                        .then(Commands.literal("operation")
+                                .executes(context -> wand(sender(context), CifWand.WandType.OPERATION)))
+                        .then(Commands.literal("atom")
+                                .executes(context -> wand(sender(context), CifWand.WandType.ATOM))))
+                .then(Commands.literal("wands")
+                        .executes(context -> wands(sender(context))))
                 .then(Commands.literal("pack")
                         .executes(context -> pack(sender(context))))
                 .then(Commands.literal("download")
@@ -145,6 +151,8 @@ public final class CifCommand {
 
         sender.sendMessage(Component.text("道具", NamedTextColor.AQUA));
         sender.sendMessage(command("/cif wand", "CIF操作棒を取得", true));
+        sender.sendMessage(command("/cif wand atom", "CIF原子棒を取得", false));
+        sender.sendMessage(command("/cif wands", "操作棒と原子棒をまとめて取得", true));
         sender.sendMessage(command("/cif pack", "リソースパックを再適用", true));
         sender.sendMessage(command("/cif reload", "設定を再読み込み", true));
 
@@ -165,6 +173,13 @@ public final class CifCommand {
         sender.sendMessage(Component.text("GUI: 複数モデルは「モデル一覧」から選択 / Shift+クリックで削除",
                 NamedTextColor.GRAY));
         sender.sendMessage(Component.text("GUI: 単位胞の枠とボンド（棒球）表示を切替", NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("GUI: 原子ラベル ON/OFF / 選択原子の表示", NamedTextColor.GRAY));
+
+        sender.sendMessage(Component.text("CIF原子棒", NamedTextColor.AQUA));
+        sender.sendMessage(Component.text("右クリック: 原子を選択 / 追加", NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("左クリック: 選択解除", NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("スニーク+右クリック: 最後の選択を解除", NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("2原子: 距離 / 3原子: 角度 / 4原子: 二面角", NamedTextColor.GRAY));
         return 1;
     }
 
@@ -175,13 +190,27 @@ public final class CifCommand {
         return label.append(Component.text("  " + description, NamedTextColor.GRAY));
     }
 
-    private int wand(CommandSender sender) {
+    private int wand(CommandSender sender, CifWand.WandType type) {
         Player player = player(sender);
         if (player == null) {
             return 0;
         }
-        plugin.wand().give(player);
-        sender.sendMessage(Component.text("CIF操作棒を追加しました。右クリックでメニューを開けます。",
+        plugin.wand().give(player, type);
+        sender.sendMessage(Component.text(type == CifWand.WandType.ATOM
+                ? "CIF原子棒を追加しました。右クリックで原子を選択できます。"
+                : "CIF操作棒を追加しました。右クリックでメニューを開けます。",
+                NamedTextColor.GREEN));
+        return 1;
+    }
+
+    private int wands(CommandSender sender) {
+        Player player = player(sender);
+        if (player == null) {
+            return 0;
+        }
+        plugin.wand().giveIfMissing(player, CifWand.WandType.OPERATION);
+        plugin.wand().giveIfMissing(player, CifWand.WandType.ATOM);
+        sender.sendMessage(Component.text("CIF操作棒とCIF原子棒を付与しました。",
                 NamedTextColor.GREEN));
         return 1;
     }
@@ -413,6 +442,7 @@ public final class CifCommand {
             return 0;
         }
         sender.sendMessage(Component.text("モデル #" + id + " を選択しました。", NamedTextColor.GREEN));
+        player.sendActionBar(Component.text("選択中: モデル #" + id, NamedTextColor.AQUA));
         return 1;
     }
 

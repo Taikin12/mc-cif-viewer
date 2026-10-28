@@ -43,6 +43,7 @@ public final class CrystalRenderer {
 
     public static final String TAG = "cifviewer";
     private static final int MAX_BONDS = 4000;
+    private static final int MAX_LABELS = 200;
 
     public record ModelRef(UUID playerId, int modelId) {
     }
@@ -195,6 +196,7 @@ public final class CrystalRenderer {
                     + plugin.config().maxAtoms() + ".");
         }
         session.repeat(repeatX, repeatY, repeatZ);
+        session.selectedAtoms(List.of());
         refresh(player, session);
     }
 
@@ -295,6 +297,8 @@ public final class CrystalRenderer {
         session.spaceFilling(false);
         session.showUnitCell(false);
         session.showBonds(false);
+        session.showLabels(false);
+        session.selectedAtoms(List.of());
         session.radiusMode(ViewSession.RadiusMode.VDW);
         session.rotation(0.0, 0.0, 0.0);
         session.rotationAxis(ViewSession.Axis.Y);
@@ -332,6 +336,132 @@ public final class CrystalRenderer {
         }
         session.sharedEdit(shared);
         markDirty();
+    }
+
+    public void toggleLabels(Player player) {
+        ViewSession session = requireSession(player);
+        session.showLabels(!session.showLabels());
+        refresh(player, session);
+    }
+
+    public String addAtomSelection(Player player, boolean removeLast) {
+        ViewSession session = requireSession(player);
+        if (!player.getWorld().getUID().equals(session.worldId())) {
+            return "このモデルは別のワールドにあります。";
+        }
+        List<Integer> selected = new ArrayList<>(session.selectedAtoms());
+        if (removeLast) {
+            if (selected.isEmpty()) {
+                return "選択中の原子はありません。";
+            }
+            selected.removeLast();
+        } else {
+            ViewSession.AtomMarker marker = findAtom(player, session);
+            if (marker == null) {
+                return "原子が見つかりません。";
+            }
+            if (selected.size() >= 4) {
+                selected.clear();
+            }
+            if (!selected.contains(marker.index())) {
+                selected.add(marker.index());
+            }
+        }
+        session.selectedAtoms(selected);
+        refresh(player, session);
+        return selectionText(session);
+    }
+
+    public String clearAtomSelection(Player player) {
+        ViewSession session = requireSession(player);
+        if (session.selectedAtoms().isEmpty()) {
+            return "選択中の原子はありません。";
+        }
+        session.selectedAtoms(List.of());
+        refresh(player, session);
+        return "選択を解除しました。";
+    }
+
+    private ViewSession.AtomMarker findAtom(Player player, ViewSession session) {
+        Vector eye = player.getEyeLocation().toVector();
+        Vector direction = player.getEyeLocation().getDirection().normalize();
+        Vector origin = session.origin().toVector();
+        ViewSession.AtomMarker best = null;
+        double bestT = 64.0;
+        for (ViewSession.AtomMarker marker : session.atomMarkers()) {
+            Vector center = origin.clone().add(marker.position());
+            double radius = Math.max(0.35, marker.radius());
+            Vector oc = eye.clone().subtract(center);
+            double b = oc.dot(direction);
+            double c = oc.dot(oc) - radius * radius;
+            double discriminant = b * b - c;
+            if (discriminant < 0.0) {
+                continue;
+            }
+            double t = -b - Math.sqrt(discriminant);
+            if (t < 0.0) {
+                t = -b + Math.sqrt(discriminant);
+            }
+            if (t >= 0.0 && t < bestT) {
+                bestT = t;
+                best = marker;
+            }
+        }
+        if (best != null) {
+            return best;
+        }
+
+        double bestDistance = 1.0;
+        for (ViewSession.AtomMarker marker : session.atomMarkers()) {
+            Vector center = origin.clone().add(marker.position());
+            Vector toCenter = center.clone().subtract(eye);
+            double t = toCenter.dot(direction);
+            if (t < 0.0 || t > 64.0) {
+                continue;
+            }
+            Vector closest = eye.clone().add(direction.clone().multiply(t));
+            double distance = closest.distance(center);
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = marker;
+            }
+        }
+        return best;
+    }
+
+    private String selectionText(ViewSession session) {
+        List<Integer> selected = session.selectedAtoms();
+        List<ViewSession.AtomMarker> markers = session.atomMarkers();
+        List<ViewSession.AtomMarker> atoms = new ArrayList<>();
+        for (int index : selected) {
+            if (index >= 0 && index < markers.size()) {
+                atoms.add(markers.get(index));
+            }
+        }
+        if (atoms.isEmpty()) {
+            return "原子未選択";
+        }
+        if (atoms.size() == 1) {
+            return "選択: " + atoms.getFirst().label();
+        }
+        if (atoms.size() == 2) {
+            double distance = MolecularGeometry.distance(
+                    atoms.get(0).position(), atoms.get(1).position(), session.blocksPerAngstrom());
+            return String.format(Locale.ROOT, "距離 %s–%s: %.2f Å",
+                    atoms.get(0).label(), atoms.get(1).label(), distance);
+        }
+        if (atoms.size() == 3) {
+            double angle = MolecularGeometry.angle(
+                    atoms.get(0).position(), atoms.get(1).position(), atoms.get(2).position());
+            return String.format(Locale.ROOT, "角度 %s–%s–%s: %.1f°",
+                    atoms.get(0).label(), atoms.get(1).label(), atoms.get(2).label(), angle);
+        }
+        double angle = MolecularGeometry.dihedral(
+                atoms.get(0).position(), atoms.get(1).position(),
+                atoms.get(2).position(), atoms.get(3).position());
+        return String.format(Locale.ROOT, "二面角 %s–%s–%s–%s: %.1f°",
+                atoms.get(0).label(), atoms.get(1).label(), atoms.get(2).label(),
+                atoms.get(3).label(), angle);
     }
 
     public int clear(Player player) {
@@ -457,6 +587,7 @@ public final class CrystalRenderer {
         CifConfig.RenderMode mode = plugin.config().renderMode();
 
         List<RawAtom> raw = new ArrayList<>();
+        List<ViewSession.AtomMarker> markers = new ArrayList<>();
         for (int i = 0; i < repeatX; i++) {
             for (int j = 0; j < repeatY; j++) {
                 for (int k = 0; k < repeatZ; k++) {
@@ -484,9 +615,11 @@ public final class CrystalRenderer {
         double maxX = Double.NEGATIVE_INFINITY;
         double maxY = Double.NEGATIVE_INFINITY;
         double maxZ = Double.NEGATIVE_INFINITY;
+        List<Integer> selected = session.selectedAtoms();
 
         try {
-            for (RawAtom atom : raw) {
+            for (int atomIndex = 0; atomIndex < raw.size(); atomIndex++) {
+                RawAtom atom = raw.get(atomIndex);
                 Vector position = new Vector(atom.x, atom.y, atom.z);
                 position.rotateAroundX(rotationX);
                 position.rotateAroundY(rotationY);
@@ -522,9 +655,9 @@ public final class CrystalRenderer {
                         origin.getX() + position.getX(),
                         origin.getY() + position.getY(),
                         origin.getZ() + position.getZ());
+                Entity display;
                 if (mode == CifConfig.RenderMode.MODEL) {
-                    ItemDisplay display = spawnItem(world, location, rgb, (float) atomScale);
-                    entities.add(display.getUniqueId());
+                    display = spawnItem(world, location, rgb, (float) atomScale);
                 } else {
                     int alpha = (int) Math.round(200.0 * (0.45 + 0.55 * atom.atom.occupancy()));
                     Color background;
@@ -541,10 +674,41 @@ public final class CrystalRenderer {
                                 : TextColor.color(255, 255, 255);
                         glyph = atom.atom.element();
                     }
-                    TextDisplay display = spawn(world, location, Component.text(glyph, textColor),
+                    display = spawn(world, location, Component.text(glyph, textColor),
                             background, (float) atomScale,
                             mode == CifConfig.RenderMode.CIRCLE && plugin.config().sphereShadow());
-                    entities.add(display.getUniqueId());
+                }
+                entities.add(display.getUniqueId());
+                if (selected.contains(atomIndex)) {
+                    display.setGlowing(true);
+                }
+                String label = atom.atom.label() == null || atom.atom.label().isBlank()
+                        ? atom.atom.element()
+                        : atom.atom.label();
+                markers.add(new ViewSession.AtomMarker(atomIndex, label, atom.atom.element(),
+                        position.clone(), atomScale / 2.0, rgb));
+            }
+            session.atomMarkers(markers);
+
+            if (!markers.isEmpty()) {
+                Set<Integer> selectedSet = new HashSet<>(selected);
+                int labelCount = 0;
+                for (ViewSession.AtomMarker marker : markers) {
+                    boolean isSelected = selectedSet.contains(marker.index());
+                    if (!isSelected && (!session.showLabels() || labelCount >= MAX_LABELS)) {
+                        continue;
+                    }
+                    Location labelLocation = new Location(world,
+                            origin.getX() + marker.position().getX(),
+                            origin.getY() + marker.position().getY() + marker.radius() + 0.25,
+                            origin.getZ() + marker.position().getZ());
+                    TextDisplay label = spawn(world, labelLocation,
+                            Component.text(marker.label(), TextColor.color(
+                                    marker.rgb()[0], marker.rgb()[1], marker.rgb()[2])),
+                            Color.fromARGB(0, 0, 0, 0), 0.6f, true);
+                    label.setGlowing(isSelected);
+                    entities.add(label.getUniqueId());
+                    labelCount++;
                 }
             }
 

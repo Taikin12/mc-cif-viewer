@@ -26,6 +26,7 @@ public final class CifControlGui {
     private static final int BONDS = 6;
     private static final int SHARE = 7;
     private static final int UNIT_CELL = 8;
+    private static final int LABELS = 10;
     private static final int SCALE_UP = 9;
     private static final int REPEAT_UP = 11;
     private static final int ATOM_SCALE_UP = 13;
@@ -95,6 +96,7 @@ public final class CifControlGui {
                 case BONDS -> plugin.renderer().toggleBonds(player);
                 case SHARE -> plugin.renderer().toggleSharedEdit(player);
                 case UNIT_CELL -> plugin.renderer().toggleUnitCell(player);
+                case LABELS -> plugin.renderer().toggleLabels(player);
                 case RADIUS_MODE -> plugin.renderer().cycleRadiusMode(player);
                 case RESET -> plugin.renderer().reset(player);
                 case ROTATION_AXIS -> plugin.renderer().cycleRotationAxis(player);
@@ -151,6 +153,7 @@ public final class CifControlGui {
         inventory.setItem(BONDS, bondsButton(session));
         inventory.setItem(SHARE, shareButton(session));
         inventory.setItem(UNIT_CELL, unitCellButton(session));
+        inventory.setItem(LABELS, labelsButton(session));
         inventory.setItem(INFO, info(session));
         inventory.setItem(SCALE_UP, button(Material.LIME_STAINED_GLASS_PANE, "全体サイズ +",
                 List.of(value("ブロック/Å: " + number(session.blocksPerAngstrom())))));
@@ -205,6 +208,8 @@ public final class CifControlGui {
         lore.add(value("表示形式: " + (session.spaceFilling() ? "空間充填" : "球体")));
         lore.add(value("単位胞: " + (session.showUnitCell() ? "ON" : "OFF")));
         lore.add(value("ボンド: " + (session.showBonds() ? "ON" : "OFF")));
+        lore.add(value("ラベル: " + (session.showLabels() ? "ON" : "OFF")));
+        lore.add(value("選択原子: " + session.selectedAtoms().size()));
         lore.add(value("充填半径: " + radiusModeName(session.radiusMode())));
         lore.add(value("回転軸: " + session.rotationAxis().name()));
         lore.add(value("原点: 結晶の0,0,0"));
@@ -228,6 +233,15 @@ public final class CifControlGui {
         }
         return button(Material.SNOWBALL, "表示: 球体",
                 List.of(value("クリックで空間充填に変更"), value("半径: 共有結合半径ベース")));
+    }
+
+    private ItemStack labelsButton(ViewSession session) {
+        if (session.showLabels()) {
+            return button(Material.NAME_TAG, "ラベル: ON",
+                    List.of(value("全原子のラベルを表示"), value("選択原子は常に表示")));
+        }
+        return button(Material.PAPER, "ラベル: OFF",
+                List.of(value("全原子のラベルを非表示"), value("選択原子は常に表示")));
     }
 
     private ItemStack shareButton(ViewSession session) {

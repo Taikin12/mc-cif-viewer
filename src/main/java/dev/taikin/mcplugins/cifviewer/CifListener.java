@@ -41,12 +41,18 @@ public final class CifListener implements Listener {
             return;
         }
         ItemStack item = event.getItem();
-        if (!plugin.wand().isWand(item)) {
+        CifWand.WandType wandType = plugin.wand().type(item);
+        if (wandType == null) {
             return;
         }
 
         Player player = event.getPlayer();
         Action action = event.getAction();
+        if (wandType == CifWand.WandType.ATOM) {
+            event.setCancelled(true);
+            handleAtomInteract(player, action);
+            return;
+        }
         if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
             event.setCancelled(true);
             plugin.controlGui().open(player);
@@ -79,6 +85,12 @@ public final class CifListener implements Listener {
         if (event.getHand() != EquipmentSlot.HAND) {
             return;
         }
+        if (plugin.wand().type(event.getPlayer().getInventory().getItemInMainHand())
+                == CifWand.WandType.ATOM) {
+            event.setCancelled(true);
+            handleAtomInteract(event.getPlayer(), Action.RIGHT_CLICK_AIR);
+            return;
+        }
         CrystalRenderer.ModelRef ref = plugin.renderer().modelRef(event.getRightClicked().getUniqueId());
         if (ref == null) {
             return;
@@ -97,6 +109,10 @@ public final class CifListener implements Listener {
             return;
         }
         event.setCancelled(true);
+        if (plugin.wand().type(player.getInventory().getItemInMainHand()) == CifWand.WandType.ATOM) {
+            handleAtomInteract(player, Action.LEFT_CLICK_AIR);
+            return;
+        }
         handleModelClick(player, ref, false);
     }
 
@@ -105,6 +121,12 @@ public final class CifListener implements Listener {
             player.sendMessage(Component.text("モデル #" + ref.modelId() + " はありません。",
                     NamedTextColor.GRAY));
             return;
+        }
+        ViewSession selected = plugin.renderer().session(player);
+        if (selected != null) {
+            String shared = selected.sharedEdit() ? " [共有]" : "";
+            player.sendActionBar(Component.text("選択中: モデル #" + selected.id() + " "
+                    + selected.crystal().name() + shared, NamedTextColor.AQUA));
         }
         if (!plugin.wand().has(player)) {
             plugin.wand().give(player);
@@ -118,6 +140,20 @@ public final class CifListener implements Listener {
         }
         try {
             plugin.renderer().rotateAroundAxis(player, player.isSneaking() ? -15.0 : 15.0);
+        } catch (IllegalStateException e) {
+            player.sendMessage(Component.text(e.getMessage(), NamedTextColor.RED));
+        }
+    }
+
+    private void handleAtomInteract(Player player, Action action) {
+        try {
+            String text;
+            if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
+                text = plugin.renderer().addAtomSelection(player, player.isSneaking());
+            } else {
+                text = plugin.renderer().clearAtomSelection(player);
+            }
+            player.sendActionBar(Component.text(text, NamedTextColor.AQUA));
         } catch (IllegalStateException e) {
             player.sendMessage(Component.text(e.getMessage(), NamedTextColor.RED));
         }
@@ -140,7 +176,8 @@ public final class CifListener implements Listener {
         }
         ItemStack previous = player.getInventory().getItem(event.getPreviousSlot());
         ItemStack next = player.getInventory().getItem(event.getNewSlot());
-        if (!plugin.wand().isWand(previous) && !plugin.wand().isWand(next)) {
+        if (plugin.wand().type(previous) != CifWand.WandType.OPERATION
+                && plugin.wand().type(next) != CifWand.WandType.OPERATION) {
             return;
         }
 

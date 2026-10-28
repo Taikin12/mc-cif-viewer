@@ -198,6 +198,7 @@ public final class ModelStore {
         section.set("space-filling", session.spaceFilling());
         section.set("unit-cell", session.showUnitCell());
         section.set("bonds", session.showBonds());
+        section.set("show-labels", session.showLabels());
         section.set("radius-mode", session.radiusMode().name());
     }
 
@@ -280,6 +281,7 @@ public final class ModelStore {
         session.spaceFilling(section.getBoolean("space-filling", false));
         session.showUnitCell(section.getBoolean("unit-cell", false));
         session.showBonds(section.getBoolean("bonds", false));
+        session.showLabels(section.getBoolean("show-labels", false));
         try {
             session.radiusMode(ViewSession.RadiusMode.valueOf(
                     section.getString("radius-mode", "VDW").toUpperCase(Locale.ROOT)));

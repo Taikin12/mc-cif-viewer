@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.bukkit.Location;
+import org.bukkit.util.Vector;
 
 public final class ViewSession {
 
@@ -18,6 +19,9 @@ public final class ViewSession {
         VDW,
         IONIC,
         COVALENT
+    }
+
+    public record AtomMarker(int index, String label, String element, Vector position, double radius, int[] rgb) {
     }
 
     private final UUID worldId;
@@ -38,6 +42,9 @@ public final class ViewSession {
     private boolean spaceFilling;
     private boolean showUnitCell;
     private boolean showBonds;
+    private boolean showLabels;
+    private List<Integer> selectedAtoms = List.of();
+    private List<AtomMarker> atomMarkers = List.of();
     private RadiusMode radiusMode = RadiusMode.VDW;
     private int renderedAtoms;
     private List<UUID> entities = List.of();
@@ -124,6 +131,18 @@ public final class ViewSession {
 
     public boolean showBonds() {
         return showBonds;
+    }
+
+    public boolean showLabels() {
+        return showLabels;
+    }
+
+    public List<Integer> selectedAtoms() {
+        return selectedAtoms;
+    }
+
+    List<AtomMarker> atomMarkers() {
+        return atomMarkers;
     }
 
     public RadiusMode radiusMode() {
@@ -216,6 +235,18 @@ public final class ViewSession {
 
     void showBonds(boolean showBonds) {
         this.showBonds = showBonds;
+    }
+
+    void showLabels(boolean showLabels) {
+        this.showLabels = showLabels;
+    }
+
+    void selectedAtoms(List<Integer> selectedAtoms) {
+        this.selectedAtoms = List.copyOf(selectedAtoms);
+    }
+
+    void atomMarkers(List<AtomMarker> atomMarkers) {
+        this.atomMarkers = List.copyOf(atomMarkers);
     }
 
     void radiusMode(RadiusMode radiusMode) {
