@@ -13,6 +13,7 @@ import dev.taikin.mcplugins.cifviewer.model.Crystal;
 import dev.taikin.mcplugins.cifviewer.xrd.XrdMapRenderer;
 import dev.taikin.mcplugins.cifviewer.xrd.XrdPattern;
 import dev.taikin.mcplugins.cifviewer.xrd.XrdSimulator;
+import dev.taikin.mcplugins.cifviewer.xrd.XraySource;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
 import java.io.IOException;
@@ -108,10 +109,26 @@ public final class CifCommand {
                                                         DoubleArgumentType.getDouble(context, "scale"),
                                                         IntegerArgumentType.getInteger(context, "repeat")))))))
                 .then(Commands.literal("xrd")
+                        .executes(context -> xrd(sender(context), null, null, null, null))
                         .then(Commands.argument("file", StringArgumentType.greedyString())
                                 .suggests(this::suggestFiles)
                                 .executes(context -> xrd(sender(context),
-                                        StringArgumentType.getString(context, "file")))))
+                                        StringArgumentType.getString(context, "file"), null, null, null))))
+                .then(Commands.literal("xrdat")
+                        .then(Commands.argument("source", StringArgumentType.word())
+                                .then(Commands.argument("min", DoubleArgumentType.doubleArg(0.1, 179.0))
+                                        .then(Commands.argument("max", DoubleArgumentType.doubleArg(0.2, 179.9))
+                                                .executes(context -> xrd(sender(context), null,
+                                                        StringArgumentType.getString(context, "source"),
+                                                        DoubleArgumentType.getDouble(context, "min"),
+                                                        DoubleArgumentType.getDouble(context, "max")))
+                                                .then(Commands.argument("file", StringArgumentType.greedyString())
+                                                        .suggests(this::suggestFiles)
+                                                        .executes(context -> xrd(sender(context),
+                                                                StringArgumentType.getString(context, "file"),
+                                                                StringArgumentType.getString(context, "source"),
+                                                                DoubleArgumentType.getDouble(context, "min"),
+                                                                DoubleArgumentType.getDouble(context, "max"))))))))
                 .then(Commands.literal("models")
                         .executes(context -> models(sender(context))))
                 .then(Commands.literal("select")
@@ -153,7 +170,9 @@ public final class CifCommand {
         sender.sendMessage(command("/cif fetchat ", "倍率と繰り返しを指定して追加", false));
         sender.sendMessage(command("/cif cod ", "COD ID から取得して保存", false));
         sender.sendMessage(command("/cif codat ", "倍率・繰り返し指定で COD から取得", false));
+        sender.sendMessage(command("/cif xrd", "表示中モデルから XRD 地図を作成", true));
         sender.sendMessage(command("/cif xrd ", "CIF から XRD シミュレーション地図を作成", false));
+        sender.sendMessage(command("/cif xrdat ", "線源と 2θ 範囲を指定して XRD 地図を作成", false));
         sender.sendMessage(command("/cif models", "全モデル一覧", true));
         sender.sendMessage(command("/cif select ", "操作するモデルを選択", false));
         sender.sendMessage(command("/cif remove ", "指定モデルを削除（所有者/管理者）", false));
@@ -423,29 +442,51 @@ public final class CifCommand {
         }
     }
 
-    private int xrd(CommandSender sender, String file) {
+    private int xrd(CommandSender sender, String file, String source, Double min, Double max) {
         Player player = player(sender);
         if (player == null) {
             return 0;
         }
-        Path path = plugin.repository().resolve(file);
-        if (path == null) {
-            sender.sendMessage(Component.text("CIF not found or ambiguous: " + file, NamedTextColor.RED));
-            return 0;
-        }
         try {
-            long size = Files.size(path);
-            if (size > MAX_FILE_SIZE) {
-                sender.sendMessage(Component.text("CIF file is too large (" + size + " bytes).",
+            double wavelength = source == null
+                    ? plugin.config().xrdWavelength()
+                    : XraySource.wavelength(source);
+            double twoThetaMin = min == null ? plugin.config().xrdTwoThetaMin() : min;
+            double twoThetaMax = max == null ? plugin.config().xrdTwoThetaMax() : max;
+            if (twoThetaMax <= twoThetaMin) {
+                sender.sendMessage(Component.text("2theta max must be greater than min.",
                         NamedTextColor.RED));
                 return 0;
             }
-            String text = Files.readString(path, StandardCharsets.UTF_8);
-            Crystal crystal = new CifParser().parse(path.getFileName().toString(), text);
+
+            Crystal crystal;
+            if (file == null) {
+                var session = plugin.renderer().session(player);
+                if (session == null) {
+                    sender.sendMessage(Component.text("表示中のモデルがありません。", NamedTextColor.GRAY));
+                    return 0;
+                }
+                crystal = session.crystal();
+            } else {
+                Path path = plugin.repository().resolve(file);
+                if (path == null) {
+                    sender.sendMessage(Component.text("CIF not found or ambiguous: " + file,
+                            NamedTextColor.RED));
+                    return 0;
+                }
+                long size = Files.size(path);
+                if (size > MAX_FILE_SIZE) {
+                    sender.sendMessage(Component.text("CIF file is too large (" + size + " bytes).",
+                            NamedTextColor.RED));
+                    return 0;
+                }
+                String text = Files.readString(path, StandardCharsets.UTF_8);
+                crystal = new CifParser().parse(path.getFileName().toString(), text);
+            }
             XrdPattern pattern = XrdSimulator.simulate(crystal,
-                    plugin.config().xrdWavelength(),
-                    plugin.config().xrdTwoThetaMin(),
-                    plugin.config().xrdTwoThetaMax(),
+                    wavelength,
+                    twoThetaMin,
+                    twoThetaMax,
                     plugin.config().xrdStep(),
                     plugin.config().xrdFwhm(),
                     plugin.config().xrdMaxHkl());

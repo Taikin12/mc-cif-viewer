@@ -101,7 +101,9 @@ build/cifviewer-resourcepack.zip
 | `/cif fetch <mp-id>` | Materials Project から追加 |
 | `/cif fetchat <scale> <repeat> <mp-id>` | 倍率・リピート指定で取得 |
 | `/cif cod <id>` | COD から CIF を取得して保存・表示 |
+| `/cif xrd` | 表示中モデルから XRD 地図を作成（config の波長・範囲） |
 | `/cif xrd <file>` | CIF から XRD シミュレーション地図を作成 |
+| `/cif xrdat <source> <min> <max> [file]` | 線源と 2θ 範囲を指定して XRD 地図を作成（file 省略時は表示中モデル） |
 | `/cif codat <scale> <repeat> <id>` | 倍率・リピート指定で COD から取得 |
 | `/cif models` | 全モデル一覧 |
 | `/cif select <id>` | 操作対象モデルを選択 |
@@ -188,6 +190,16 @@ build/cifviewer-resourcepack.zip
 | `xrd.step` | プロファイルの刻み |
 | `xrd.fwhm` | ピーク幅（FWHM） |
 | `xrd.max-hkl` | hkl の最大範囲 |
+
+`xrdat` の `source` は `Cr` / `Fe` / `Co` / `Ni` / `Cu` / `Mo` / `Ag` / `W`、または波長（Å）を直接指定できます。
+
+例:
+```text
+/cif xrd
+/cif xrd NaCl.cif
+/cif xrdat Cu 5 120
+/cif xrdat Cu 5 120 NaCl.cif
+```
 
 Materials Project を使う場合、[Materials Project](https://next-gen.materialsproject.org/) で API key を取得し、`materials-project.api-key` に設定して `/cif reload` してください。API key はチャットやリポジトリに書かないでください。
 
