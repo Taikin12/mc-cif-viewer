@@ -37,6 +37,9 @@ public final class CifConfig {
     private final String materialsProjectApiKey;
     private final String materialsProjectEndpoint;
     private final int materialsProjectTimeoutSeconds;
+    private final String codBaseUrl;
+    private final int codTimeoutSeconds;
+    private final int codMaxBytes;
 
     public CifConfig(FileConfiguration configuration, File dataFolder, Logger logger) {
         List<String> configuredSources = configuration.getStringList("sources");
@@ -114,6 +117,10 @@ public final class CifConfig {
                 "https://api.materialsproject.org/materials/summary/").trim();
         this.materialsProjectTimeoutSeconds = clamp(
                 configuration.getInt("materials-project.timeout-seconds", 20), 1, 120);
+        this.codBaseUrl = configuration.getString("cod.base-url",
+                "https://www.crystallography.net/cod/").trim();
+        this.codTimeoutSeconds = clamp(configuration.getInt("cod.timeout-seconds", 20), 1, 120);
+        this.codMaxBytes = clamp(configuration.getInt("cod.max-bytes", 5 * 1024 * 1024), 1024, 20 * 1024 * 1024);
     }
 
     public List<Path> sourceDirectories() {
@@ -185,6 +192,18 @@ public final class CifConfig {
 
     public boolean materialsProjectEnabled() {
         return !materialsProjectApiKey.isEmpty();
+    }
+
+    public String codBaseUrl() {
+        return codBaseUrl;
+    }
+
+    public int codTimeoutSeconds() {
+        return codTimeoutSeconds;
+    }
+
+    public int codMaxBytes() {
+        return codMaxBytes;
     }
 
     private static int[] parseColor(String value, Logger logger, String key) {

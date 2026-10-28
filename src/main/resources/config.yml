@@ -18,3 +18,8 @@ materials-project:
   api-key: ''
   endpoint: 'https://api.materialsproject.org/materials/summary/'
   timeout-seconds: 20
+
+cod:
+  base-url: 'https://www.crystallography.net/cod/'
+  timeout-seconds: 20
+  max-bytes: 5242880

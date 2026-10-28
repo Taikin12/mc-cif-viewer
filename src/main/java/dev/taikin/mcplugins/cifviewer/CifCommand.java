@@ -2,6 +2,7 @@ package dev.taikin.mcplugins.cifviewer;
 
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.Suggestions;
@@ -80,6 +81,18 @@ public final class CifCommand {
                                                         StringArgumentType.getString(context, "material"),
                                                         DoubleArgumentType.getDouble(context, "scale"),
                                                         IntegerArgumentType.getInteger(context, "repeat")))))))
+                .then(Commands.literal("cod")
+                        .then(Commands.argument("id", LongArgumentType.longArg(1))
+                                .executes(context -> cod(sender(context),
+                                        Long.toString(LongArgumentType.getLong(context, "id")), null, null))))
+                .then(Commands.literal("codat")
+                        .then(Commands.argument("scale", DoubleArgumentType.doubleArg(0.1, 10.0))
+                                .then(Commands.argument("repeat", IntegerArgumentType.integer(1, 8))
+                                        .then(Commands.argument("id", LongArgumentType.longArg(1))
+                                                .executes(context -> cod(sender(context),
+                                                        Long.toString(LongArgumentType.getLong(context, "id")),
+                                                        DoubleArgumentType.getDouble(context, "scale"),
+                                                        IntegerArgumentType.getInteger(context, "repeat")))))))
                 .then(Commands.literal("models")
                         .executes(context -> models(sender(context))))
                 .then(Commands.literal("select")
@@ -107,6 +120,8 @@ public final class CifCommand {
         sender.sendMessage(command("/cif viewat ", "倍率と繰り返しを指定して追加", false));
         sender.sendMessage(command("/cif fetch ", "Materials Project から追加", false));
         sender.sendMessage(command("/cif fetchat ", "倍率と繰り返しを指定して追加", false));
+        sender.sendMessage(command("/cif cod ", "COD ID から取得して保存", false));
+        sender.sendMessage(command("/cif codat ", "倍率・繰り返し指定で COD から取得", false));
         sender.sendMessage(command("/cif models", "表示中モデル一覧", true));
         sender.sendMessage(command("/cif select ", "操作するモデルを選択", false));
         sender.sendMessage(command("/cif remove ", "指定モデルを削除", false));
@@ -276,6 +291,78 @@ public final class CifCommand {
         if (plugin.wand().giveIfMissing(player)) {
             player.sendMessage(Component.text("CIF操作棒を付与しました。右クリックでメニュー。",
                     NamedTextColor.GREEN));
+        }
+    }
+
+    private int cod(CommandSender sender, String id, Double scale, Integer repeat) {
+        Player player = player(sender);
+        if (player == null) {
+            return 0;
+        }
+        try {
+            Path cached = plugin.cod().cachePath(id);
+            if (Files.isRegularFile(cached)) {
+                player.sendMessage(Component.text("COD " + id + " のローカルCIFを使用します。",
+                        NamedTextColor.GRAY));
+                return viewCod(player, cached, id, scale, repeat);
+            }
+        } catch (IllegalArgumentException e) {
+            sender.sendMessage(Component.text(e.getMessage(), NamedTextColor.RED));
+            return 0;
+        }
+
+        player.sendMessage(Component.text("COD " + id + " を取得中...", NamedTextColor.GRAY));
+        plugin.cod().fetch(id).whenComplete((text, error) -> {
+            if (!plugin.isEnabled()) {
+                return;
+            }
+            try {
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (!player.isOnline()) {
+                        return;
+                    }
+                    if (error != null) {
+                        player.sendMessage(Component.text("COD fetch failed: "
+                                + message(unwrap(error)), NamedTextColor.RED));
+                        return;
+                    }
+                    try {
+                        Path path = plugin.cod().save(id, text);
+                        plugin.repository().reload();
+                        player.sendMessage(Component.text("COD CIF を保存: " + path.getFileName(),
+                                NamedTextColor.GRAY));
+                        viewCod(player, path, id, scale, repeat);
+                    } catch (IOException | RuntimeException e) {
+                        player.sendMessage(Component.text("Could not display COD CIF: " + message(e),
+                                NamedTextColor.RED));
+                    }
+                });
+            } catch (RuntimeException ignored) {
+            }
+        });
+        return 1;
+    }
+
+    private int viewCod(Player player, Path path, String id, Double scale, Integer repeat) {
+        try {
+            String text = Files.readString(path, StandardCharsets.UTF_8);
+            Crystal crystal = new CifParser().parse(path.getFileName().toString(), text);
+            int count = plugin.renderer().view(player, crystal,
+                    scale == null ? plugin.config().blocksPerAngstrom() : scale,
+                    repeat == null ? 1 : repeat);
+            int modelId = plugin.renderer().activeId(player);
+            player.sendMessage(Component.text("COD " + id + " を追加: モデル #" + modelId
+                    + " (" + count + " atoms).", NamedTextColor.GREEN));
+            giveWand(player);
+            return count;
+        } catch (IOException e) {
+            player.sendMessage(Component.text("Could not read COD CIF: " + e.getMessage(),
+                    NamedTextColor.RED));
+            return 0;
+        } catch (RuntimeException e) {
+            player.sendMessage(Component.text("Could not display COD CIF: " + message(e),
+                    NamedTextColor.RED));
+            return 0;
         }
     }
 

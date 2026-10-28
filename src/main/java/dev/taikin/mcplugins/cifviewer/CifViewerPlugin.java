@@ -1,5 +1,6 @@
 package dev.taikin.mcplugins.cifviewer;
 
+import dev.taikin.mcplugins.cifviewer.cod.CodClient;
 import dev.taikin.mcplugins.cifviewer.gui.CifControlGui;
 import dev.taikin.mcplugins.cifviewer.gui.CifModelListGui;
 import dev.taikin.mcplugins.cifviewer.gui.CifRepeatGui;
@@ -27,6 +28,7 @@ public final class CifViewerPlugin extends JavaPlugin {
     private CifControlGui controlGui;
     private CifRepeatGui repeatGui;
     private CifModelListGui modelListGui;
+    private CodClient cod;
 
     @Override
     public void onEnable() {
@@ -48,6 +50,7 @@ public final class CifViewerPlugin extends JavaPlugin {
         this.controlGui = new CifControlGui(this);
         this.repeatGui = new CifRepeatGui(this);
         this.modelListGui = new CifModelListGui(this);
+        this.cod = new CodClient(config, getDataFolder().toPath().resolve("cif"));
 
         CifCommand command = new CifCommand(this);
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event ->
@@ -72,6 +75,7 @@ public final class CifViewerPlugin extends JavaPlugin {
         this.config = new CifConfig(getConfig(), getDataFolder(), getLogger());
         this.repository.reload();
         this.materialsProject = new MaterialsProjectClient(config);
+        this.cod = new CodClient(config, getDataFolder().toPath().resolve("cif"));
     }
 
     public boolean sendResourcePack(Player player) {
@@ -122,5 +126,9 @@ public final class CifViewerPlugin extends JavaPlugin {
 
     public CifModelListGui modelListGui() {
         return modelListGui;
+    }
+
+    public CodClient cod() {
+        return cod;
     }
 }

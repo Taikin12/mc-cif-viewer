@@ -85,6 +85,8 @@ build/cifviewer-resourcepack.zip
 | `/cif viewat <scale> <repeat> <file>` | 倍率・リピート指定で追加 |
 | `/cif fetch <mp-id>` | Materials Project から追加 |
 | `/cif fetchat <scale> <repeat> <mp-id>` | 倍率・リピート指定で取得 |
+| `/cif cod <id>` | COD から CIF を取得して保存・表示 |
+| `/cif codat <scale> <repeat> <id>` | 倍率・リピート指定で COD から取得 |
 | `/cif models` | 自分の表示中モデル一覧 |
 | `/cif select <id>` | 操作対象モデルを選択 |
 | `/cif remove <id>` | 指定モデルを削除 |
@@ -145,8 +147,13 @@ build/cifviewer-resourcepack.zip
 | `atom-colors` | 元素ごとの色上書き |
 | `default-atom-color` | デフォルト色 |
 | `materials-project.api-key` | Materials Project API key |
+| `cod.base-url` | COD のベース URL |
+| `cod.timeout-seconds` | COD 取得のタイムアウト |
+| `cod.max-bytes` | COD CIF の最大サイズ |
 
 Materials Project を使う場合、[Materials Project](https://next-gen.materialsproject.org/) で API key を取得し、`materials-project.api-key` に設定して `/cif reload` してください。API key はチャットやリポジトリに書かないでください。
+
+COD は `/cif cod <id>` で取得できます。取得した CIF は `plugins/CifViewer/cif/cod-<id>.cif` に保存され、次回以降はローカルファイルを使用します。COD のデータは CC0 です。
 
 ## マルチプレイ
 
