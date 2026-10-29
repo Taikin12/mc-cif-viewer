@@ -45,6 +45,7 @@ public final class CrystalRenderer {
     public static final String TAG = "cifviewer";
     private static final int MAX_BONDS = 4000;
     private static final int MAX_LABELS = 200;
+    private static final int MAX_POLYHEDRON_CENTERS = 32;
 
     public record ModelRef(UUID playerId, int modelId) {
     }
@@ -198,6 +199,7 @@ public final class CrystalRenderer {
         }
         session.repeat(repeatX, repeatY, repeatZ);
         session.selectedAtoms(List.of());
+        session.polyhedronCenters(List.of());
         refresh(player, session);
     }
 
@@ -301,6 +303,7 @@ public final class CrystalRenderer {
         session.showLabels(false);
         session.showPolyhedron(false);
         session.selectedAtoms(List.of());
+        session.polyhedronCenters(List.of());
         session.radiusMode(ViewSession.RadiusMode.VDW);
         session.rotation(0.0, 0.0, 0.0);
         session.rotationAxis(ViewSession.Axis.Y);
@@ -348,49 +351,75 @@ public final class CrystalRenderer {
 
     public void togglePolyhedron(Player player) {
         ViewSession session = requireSession(player);
-        if (!session.showPolyhedron() && session.selectedAtoms().isEmpty()) {
-            throw new IllegalStateException("CIF原子棒で中心原子を選択してください。");
+        if (!session.showPolyhedron() && session.polyhedronCenters().isEmpty()) {
+            throw new IllegalStateException("CIF原子棒で多面体中心を選択してください。");
         }
         session.showPolyhedron(!session.showPolyhedron());
         refresh(player, session);
     }
 
-    public String addAtomSelection(Player player, boolean removeLast) {
+    public String addAtomSelection(Player player) {
         ViewSession session = requireSession(player);
         if (!player.getWorld().getUID().equals(session.worldId())) {
             return "このモデルは別のワールドにあります。";
         }
+        ViewSession.AtomMarker marker = findAtom(player, session);
+        if (marker == null) {
+            return "原子が見つかりません。";
+        }
         List<Integer> selected = new ArrayList<>(session.selectedAtoms());
-        if (removeLast) {
-            if (selected.isEmpty()) {
-                return "選択中の原子はありません。";
-            }
-            selected.removeLast();
-        } else {
-            ViewSession.AtomMarker marker = findAtom(player, session);
-            if (marker == null) {
-                return "原子が見つかりません。";
-            }
-            if (selected.size() >= 4) {
-                selected.clear();
-            }
-            if (!selected.contains(marker.index())) {
-                selected.add(marker.index());
-            }
+        if (selected.size() >= 4) {
+            selected.clear();
+        }
+        if (!selected.contains(marker.index())) {
+            selected.add(marker.index());
         }
         session.selectedAtoms(selected);
         refresh(player, session);
         return selectionText(session);
     }
 
+    public String togglePolyhedronCenter(Player player) {
+        ViewSession session = requireSession(player);
+        if (!player.getWorld().getUID().equals(session.worldId())) {
+            return "このモデルは別のワールドにあります。";
+        }
+        ViewSession.AtomMarker marker = findAtom(player, session);
+        if (marker == null) {
+            return "原子が見つかりません。";
+        }
+        List<Integer> centers = new ArrayList<>(session.polyhedronCenters());
+        if (centers.contains(marker.index())) {
+            centers.remove(Integer.valueOf(marker.index()));
+        } else {
+            if (centers.size() >= MAX_POLYHEDRON_CENTERS) {
+                return "多面体中心は最大 " + MAX_POLYHEDRON_CENTERS + " 個です。";
+            }
+            centers.add(marker.index());
+        }
+        session.polyhedronCenters(centers);
+        refresh(player, session);
+        return "多面体中心: " + centers.size() + " 個 (" + marker.label() + ")";
+    }
+
     public String clearAtomSelection(Player player) {
         ViewSession session = requireSession(player);
         if (session.selectedAtoms().isEmpty()) {
-            return "選択中の原子はありません。";
+            return "測定用の原子選択はありません。";
         }
         session.selectedAtoms(List.of());
         refresh(player, session);
-        return "選択を解除しました。";
+        return "測定用の原子選択を解除しました。";
+    }
+
+    public String clearPolyhedronCenters(Player player) {
+        ViewSession session = requireSession(player);
+        if (session.polyhedronCenters().isEmpty()) {
+            return "多面体中心は選択されていません。";
+        }
+        session.polyhedronCenters(List.of());
+        refresh(player, session);
+        return "多面体中心をすべて解除しました。";
     }
 
     private ViewSession.AtomMarker findAtom(Player player, ViewSession session) {
@@ -627,6 +656,8 @@ public final class CrystalRenderer {
         double maxY = Double.NEGATIVE_INFINITY;
         double maxZ = Double.NEGATIVE_INFINITY;
         List<Integer> selected = session.selectedAtoms();
+        Set<Integer> highlighted = new HashSet<>(selected);
+        highlighted.addAll(session.polyhedronCenters());
 
         try {
             for (int atomIndex = 0; atomIndex < raw.size(); atomIndex++) {
@@ -690,7 +721,7 @@ public final class CrystalRenderer {
                             mode == CifConfig.RenderMode.CIRCLE && plugin.config().sphereShadow());
                 }
                 entities.add(display.getUniqueId());
-                if (selected.contains(atomIndex)) {
+                if (highlighted.contains(atomIndex)) {
                     display.setGlowing(true);
                 }
                 String label = atom.atom.label() == null || atom.atom.label().isBlank()
@@ -702,7 +733,7 @@ public final class CrystalRenderer {
             session.atomMarkers(markers);
 
             if (!markers.isEmpty()) {
-                Set<Integer> selectedSet = new HashSet<>(selected);
+                Set<Integer> selectedSet = highlighted;
                 int labelCount = 0;
                 for (ViewSession.AtomMarker marker : markers) {
                     boolean isSelected = selectedSet.contains(marker.index());
@@ -723,9 +754,12 @@ public final class CrystalRenderer {
                 }
             }
 
-            if (session.showPolyhedron() && !selected.isEmpty()) {
-                int centerIndex = selected.getFirst();
-                if (centerIndex >= 0 && centerIndex < markers.size()) {
+            if (session.showPolyhedron()) {
+                List<Integer> centers = session.polyhedronCenters();
+                for (int centerIndex : centers) {
+                    if (centerIndex < 0 || centerIndex >= markers.size()) {
+                        continue;
+                    }
                     ViewSession.AtomMarker center = markers.get(centerIndex);
                     List<PolyhedronVertex> vertices = coordinationVertices(
                             markers, center, lattice, scale, rotationX, rotationY, rotationZ);

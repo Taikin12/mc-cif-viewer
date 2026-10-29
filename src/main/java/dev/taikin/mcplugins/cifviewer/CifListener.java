@@ -6,6 +6,7 @@ import dev.taikin.mcplugins.cifviewer.gui.CifModelListGuiHolder;
 import dev.taikin.mcplugins.cifviewer.gui.CifRepeatGuiHolder;
 import dev.taikin.mcplugins.cifviewer.render.CrystalRenderer;
 import dev.taikin.mcplugins.cifviewer.render.ViewSession;
+import io.papermc.paper.event.player.PlayerPickEntityEvent;
 import java.util.UUID;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -110,6 +111,36 @@ public final class CifListener implements Listener {
     }
 
     @EventHandler
+    public void onPickEntity(PlayerPickEntityEvent event) {
+        CrystalRenderer.ModelRef ref = plugin.renderer().modelRef(event.getEntity().getUniqueId());
+        if (ref == null) {
+            return;
+        }
+        event.setCancelled(true);
+        Player player = event.getPlayer();
+        if (!plugin.renderer().select(player, ref.modelId())) {
+            player.sendMessage(Component.text("モデル #" + ref.modelId() + " はありません。",
+                    NamedTextColor.GRAY));
+            return;
+        }
+        if (plugin.wand().type(player.getInventory().getItemInMainHand()) == CifWand.WandType.ATOM) {
+            String text = plugin.renderer().togglePolyhedronCenter(player);
+            player.sendActionBar(Component.text(text, NamedTextColor.AQUA));
+            return;
+        }
+        ViewSession selected = plugin.renderer().session(player);
+        if (selected != null) {
+            String shared = selected.sharedEdit() ? " [共有]" : "";
+            player.sendActionBar(Component.text("選択中: モデル #" + selected.id() + " "
+                    + selected.crystal().name() + shared, NamedTextColor.AQUA));
+        }
+        if (!plugin.wand().has(player)) {
+            plugin.wand().give(player, CifWand.WandType.MENU);
+            player.sendMessage(Component.text("CIFメニュー棒を入手しました。", NamedTextColor.GREEN));
+        }
+    }
+
+    @EventHandler
     public void onEntityDamage(EntityDamageByEntityEvent event) {
         CrystalRenderer.ModelRef ref = plugin.renderer().modelRef(event.getEntity().getUniqueId());
         if (ref == null) {
@@ -161,9 +192,13 @@ public final class CifListener implements Listener {
         try {
             String text;
             if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
-                text = plugin.renderer().addAtomSelection(player, player.isSneaking());
+                text = player.isSneaking()
+                        ? plugin.renderer().togglePolyhedronCenter(player)
+                        : plugin.renderer().addAtomSelection(player);
             } else {
-                text = plugin.renderer().clearAtomSelection(player);
+                text = player.isSneaking()
+                        ? plugin.renderer().clearPolyhedronCenters(player)
+                        : plugin.renderer().clearAtomSelection(player);
             }
             player.sendActionBar(Component.text(text, NamedTextColor.AQUA));
         } catch (IllegalStateException e) {

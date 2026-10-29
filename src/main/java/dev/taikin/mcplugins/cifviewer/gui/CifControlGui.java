@@ -213,7 +213,8 @@ public final class CifControlGui {
         lore.add(value("ボンド: " + (session.showBonds() ? "ON" : "OFF")));
         lore.add(value("ラベル: " + (session.showLabels() ? "ON" : "OFF")));
         lore.add(value("選択原子: " + session.selectedAtoms().size()));
-        lore.add(value("配位多面体: " + (session.showPolyhedron() ? "ON" : "OFF")));
+        lore.add(value("配位多面体: " + (session.showPolyhedron() ? "ON" : "OFF")
+                + " (中心 " + session.polyhedronCenters().size() + ")"));
         lore.add(value("充填半径: " + radiusModeName(session.radiusMode())));
         lore.add(value("回転軸: " + session.rotationAxis().name()));
         lore.add(value("原点: 結晶の0,0,0"));
@@ -242,7 +243,7 @@ public final class CifControlGui {
     private ItemStack polyhedronButton(ViewSession session) {
         if (session.showPolyhedron()) {
             return button(Material.PRISMARINE_CRYSTALS, "配位多面体: ON",
-                    List.of(value("選択原子の近接原子をワイヤーフレーム表示"), value("クリックで非表示")));
+                    List.of(value("選択した各原子の近接原子を表示"), value("クリックで非表示")));
         }
         return button(Material.PRISMARINE_SHARD, "配位多面体: OFF",
                 List.of(value("原子棒で中心原子を選択して表示"), value("近接原子の凸包エッジ")));

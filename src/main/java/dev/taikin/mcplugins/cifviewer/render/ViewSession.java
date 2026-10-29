@@ -45,6 +45,7 @@ public final class ViewSession {
     private boolean showLabels;
     private boolean showPolyhedron;
     private List<Integer> selectedAtoms = List.of();
+    private List<Integer> polyhedronCenters = List.of();
     private List<AtomMarker> atomMarkers = List.of();
     private RadiusMode radiusMode = RadiusMode.VDW;
     private int renderedAtoms;
@@ -144,6 +145,10 @@ public final class ViewSession {
 
     public List<Integer> selectedAtoms() {
         return selectedAtoms;
+    }
+
+    public List<Integer> polyhedronCenters() {
+        return polyhedronCenters;
     }
 
     List<AtomMarker> atomMarkers() {
@@ -252,6 +257,10 @@ public final class ViewSession {
 
     void selectedAtoms(List<Integer> selectedAtoms) {
         this.selectedAtoms = List.copyOf(selectedAtoms);
+    }
+
+    void polyhedronCenters(List<Integer> polyhedronCenters) {
+        this.polyhedronCenters = List.copyOf(polyhedronCenters);
     }
 
     void atomMarkers(List<AtomMarker> atomMarkers) {

@@ -216,7 +216,9 @@ public final class CifCommand {
         sender.sendMessage(Component.text("CIF原子棒", NamedTextColor.AQUA));
         sender.sendMessage(Component.text("右クリック: 原子を選択 / 追加", NamedTextColor.GRAY));
         sender.sendMessage(Component.text("左クリック: 選択解除", NamedTextColor.GRAY));
-        sender.sendMessage(Component.text("スニーク+右クリック: 最後の選択を解除", NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("中クリック / スニーク+右クリック: 多面体中心を追加/解除",
+                NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("スニーク+左クリック: 多面体中心をすべて解除", NamedTextColor.GRAY));
         sender.sendMessage(Component.text("2原子: 距離 / 3原子: 角度 / 4原子: 二面角", NamedTextColor.GRAY));
 
         sender.sendMessage(Component.text("GUI: 半径 vdW / イオン / 共有結合、リピート X / Y / Z",
