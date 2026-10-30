@@ -35,11 +35,33 @@ final class SymmetryOperation {
     }
 
     double[] apply(double x, double y, double z) {
-        double[] result = new double[3];
+        double[] result = applyRaw(x, y, z);
         for (int i = 0; i < 3; i++) {
-            result[i] = wrap(new Evaluator(expressions[i], x, y, z).evaluate());
+            result[i] = wrap(result[i]);
         }
         return result;
+    }
+
+    double[] applyRaw(double x, double y, double z) {
+        double[] result = new double[3];
+        for (int i = 0; i < 3; i++) {
+            result[i] = new Evaluator(expressions[i], x, y, z).evaluate();
+        }
+        return result;
+    }
+
+    double[][] linearMatrix() {
+        double[] origin = applyRaw(0.0, 0.0, 0.0);
+        double[][] matrix = new double[3][3];
+        for (int column = 0; column < 3; column++) {
+            double[] basis = {0.0, 0.0, 0.0};
+            basis[column] = 1.0;
+            double[] value = applyRaw(basis[0], basis[1], basis[2]);
+            for (int row = 0; row < 3; row++) {
+                matrix[row][column] = value[row] - origin[row];
+            }
+        }
+        return matrix;
     }
 
     String source() {

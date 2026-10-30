@@ -55,6 +55,21 @@ public final class Crystal {
         return text.toString();
     }
 
-    public record Atom(String element, double x, double y, double z, double occupancy, int charge, String label) {
+    public record Atom(String element, double x, double y, double z, double occupancy, int charge,
+            String label, double[] uij) {
+
+        public Atom {
+            uij = uij == null ? null : uij.clone();
+        }
+
+        public Atom(String element, double x, double y, double z, double occupancy, int charge,
+                String label) {
+            this(element, x, y, z, occupancy, charge, label, null);
+        }
+
+        @Override
+        public double[] uij() {
+            return uij == null ? null : uij.clone();
+        }
     }
 }

@@ -87,6 +87,12 @@ public final class CifCommand {
                                                                         IntegerArgumentType.getInteger(context, "l"),
                                                                         IntegerArgumentType.getInteger(context, "layers"),
                                                                         DoubleArgumentType.getDouble(context, "vacuum")))))))))
+                .then(Commands.literal("ellipsoid")
+                        .executes(context -> ellipsoid(sender(context), null))
+                        .then(Commands.literal("on")
+                                .executes(context -> ellipsoid(sender(context), true)))
+                        .then(Commands.literal("off")
+                                .executes(context -> ellipsoid(sender(context), false))))
                 .then(Commands.literal("miller")
                         .executes(context -> miller(sender(context), null, null, null))
                         .then(Commands.literal("off")
@@ -220,6 +226,7 @@ public final class CifCommand {
         sender.sendMessage(command("/cif xrd ", "CIF から XRD シミュレーション地図を作成", false));
         sender.sendMessage(command("/cif xrdat ", "線源と 2θ 範囲を指定して XRD 地図を作成", false));
         sender.sendMessage(command("/cif xrdopt ", "source=Cu / range=10:90 形式の指定", false));
+        sender.sendMessage(command("/cif ellipsoid ", "熱振動楕円体 ON/OFF（Uij がある CIF のみ）", false));
         sender.sendMessage(command("/cif miller ", "Miller面 (h k l) を表示 / off で非表示", false));
         sender.sendMessage(command("/cif slab ", "h k l 層数 [真空Å] でスラブを生成（既定 12 Å）", false));
         sender.sendMessage(command("/cif models", "全モデル一覧", true));
@@ -326,6 +333,25 @@ public final class CifCommand {
                     : e.getMessage(), NamedTextColor.RED));
             return 0;
         }
+        return 1;
+    }
+
+    private int ellipsoid(CommandSender sender, Boolean enabled) {
+        Player player = player(sender);
+        if (player == null) {
+            return 0;
+        }
+        if (plugin.renderer().session(player) == null) {
+            player.sendMessage(Component.text("構造が表示されていません。", NamedTextColor.RED));
+            return 0;
+        }
+        boolean current = plugin.renderer().session(player).showEllipsoids();
+        if (enabled == null || enabled != current) {
+            plugin.renderer().toggleEllipsoids(player);
+        }
+        boolean value = plugin.renderer().session(player).showEllipsoids();
+        player.sendActionBar(Component.text("熱振動楕円体: " + (value ? "ON" : "OFF"),
+                NamedTextColor.AQUA));
         return 1;
     }
 

@@ -45,6 +45,7 @@ public final class ViewSession {
     private boolean showLabels;
     private boolean showPolyhedron;
     private boolean showPolyhedronFaces = true;
+    private boolean showEllipsoids = true;
     private boolean showMiller;
     private int millerH = 1;
     private int millerK;
@@ -150,6 +151,10 @@ public final class ViewSession {
 
     public boolean showPolyhedronFaces() {
         return showPolyhedronFaces;
+    }
+
+    public boolean showEllipsoids() {
+        return showEllipsoids;
     }
 
     public boolean showMiller() {
@@ -282,6 +287,10 @@ public final class ViewSession {
 
     void showPolyhedronFaces(boolean showPolyhedronFaces) {
         this.showPolyhedronFaces = showPolyhedronFaces;
+    }
+
+    void showEllipsoids(boolean showEllipsoids) {
+        this.showEllipsoids = showEllipsoids;
     }
 
     void showMiller(boolean showMiller) {

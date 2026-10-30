@@ -47,13 +47,14 @@ public final class CifParser {
             throw new IllegalArgumentException("No _atom_site coordinates found in CIF.");
         }
 
-        List<Crystal.Atom> baseAtoms = readAtoms(atomLoop, lattice);
+        Map<String, double[]> aniso = readAniso(data);
+        List<Crystal.Atom> baseAtoms = readAtoms(atomLoop, lattice, aniso);
         if (baseAtoms.isEmpty()) {
             throw new IllegalArgumentException("No usable atom sites found in CIF.");
         }
 
         List<SymmetryOperation> operations = readSymmetry(data);
-        List<Crystal.Atom> atoms = expand(baseAtoms, operations);
+        List<Crystal.Atom> atoms = expand(baseAtoms, operations, lattice);
         if (atoms.isEmpty()) {
             throw new IllegalArgumentException("Symmetry expansion produced no atoms.");
         }
@@ -92,7 +93,38 @@ public final class CifParser {
         return Lattice.fromCell(a, b, c, alpha, beta, gamma);
     }
 
-    private List<Crystal.Atom> readAtoms(Loop loop, Lattice lattice) {
+    private Map<String, double[]> readAniso(ParsedData data) {
+        Map<String, double[]> result = new LinkedHashMap<>();
+        for (Loop loop : data.loops) {
+            if (!loop.has("_atom_site_aniso_label")) {
+                continue;
+            }
+            for (Map<String, String> record : loop.records) {
+                String label = record.get("_atom_site_aniso_label");
+                if (label == null || label.isBlank()) {
+                    continue;
+                }
+                Double u11 = optionalNumber(record.get("_atom_site_aniso_u_11"));
+                Double u22 = optionalNumber(record.get("_atom_site_aniso_u_22"));
+                Double u33 = optionalNumber(record.get("_atom_site_aniso_u_33"));
+                if (u11 == null || u22 == null || u33 == null) {
+                    continue;
+                }
+                Double u12 = optionalNumber(record.get("_atom_site_aniso_u_12"));
+                Double u13 = optionalNumber(record.get("_atom_site_aniso_u_13"));
+                Double u23 = optionalNumber(record.get("_atom_site_aniso_u_23"));
+                result.put(label.trim(), new double[] {
+                        u11, u22, u33,
+                        u12 == null ? 0.0 : u12,
+                        u13 == null ? 0.0 : u13,
+                        u23 == null ? 0.0 : u23
+                });
+            }
+        }
+        return result;
+    }
+
+    private List<Crystal.Atom> readAtoms(Loop loop, Lattice lattice, Map<String, double[]> aniso) {
         List<Crystal.Atom> atoms = new ArrayList<>();
         for (Map<String, String> record : loop.records) {
             String label = record.getOrDefault("_atom_site_label", "");
@@ -122,6 +154,11 @@ public final class CifParser {
             if (fractional == null) {
                 continue;
             }
+            String siteLabel = label.isBlank() ? element : label;
+            double[] siteUij = aniso.get(label.trim());
+            if (siteUij == null) {
+                siteUij = uijFromRecord(record);
+            }
             atoms.add(new Crystal.Atom(
                     element,
                     fractional[0],
@@ -129,7 +166,8 @@ public final class CifParser {
                     fractional[2],
                     Math.min(1.0, occupancy),
                     charge,
-                    label.isBlank() ? element : label));
+                    siteLabel,
+                    siteUij));
         }
         return atoms;
     }
@@ -176,7 +214,8 @@ public final class CifParser {
         return operations;
     }
 
-    private List<Crystal.Atom> expand(List<Crystal.Atom> baseAtoms, List<SymmetryOperation> operations) {
+    private List<Crystal.Atom> expand(List<Crystal.Atom> baseAtoms, List<SymmetryOperation> operations,
+            Lattice lattice) {
         Map<String, List<Crystal.Atom>> byElement = new LinkedHashMap<>();
         int count = 0;
         for (Crystal.Atom atom : baseAtoms) {
@@ -190,7 +229,8 @@ public final class CifParser {
                         position[2],
                         atom.occupancy(),
                         atom.charge(),
-                        atom.label());
+                        atom.label(),
+                        transformUij(atom.uij(), operation.linearMatrix(), lattice));
                 if (addUnique(bucket, candidate)) {
                     count++;
                     if (count > MAX_ATOMS) {
@@ -203,6 +243,71 @@ public final class CifParser {
         List<Crystal.Atom> result = new ArrayList<>(count);
         for (List<Crystal.Atom> bucket : byElement.values()) {
             result.addAll(bucket);
+        }
+        return result;
+    }
+
+    private double[] uijFromRecord(Map<String, String> record) {
+        Double u11 = optionalNumber(record.get("_atom_site_aniso_u_11"));
+        Double u22 = optionalNumber(record.get("_atom_site_aniso_u_22"));
+        Double u33 = optionalNumber(record.get("_atom_site_aniso_u_33"));
+        if (u11 == null || u22 == null || u33 == null) {
+            return null;
+        }
+        Double u12 = optionalNumber(record.get("_atom_site_aniso_u_12"));
+        Double u13 = optionalNumber(record.get("_atom_site_aniso_u_13"));
+        Double u23 = optionalNumber(record.get("_atom_site_aniso_u_23"));
+        return new double[] {
+            u11, u22, u33,
+            u12 == null ? 0.0 : u12,
+            u13 == null ? 0.0 : u13,
+            u23 == null ? 0.0 : u23
+        };
+    }
+
+    private double[] transformUij(double[] uij, double[][] rotation, Lattice lattice) {
+        if (uij == null) {
+            return null;
+        }
+        double[][] tensor = {
+            {uij[0], uij[3], uij[4]},
+            {uij[3], uij[1], uij[5]},
+            {uij[4], uij[5], uij[2]}
+        };
+        double[][] rotated = multiply(multiply(rotation, tensor), transpose(rotation));
+        double[] a = lattice.toCartesian(1.0, 0.0, 0.0);
+        double[] b = lattice.toCartesian(0.0, 1.0, 0.0);
+        double[] c = lattice.toCartesian(0.0, 0.0, 1.0);
+        double[][] basis = {
+            {a[0], b[0], c[0]},
+            {a[1], b[1], c[1]},
+            {a[2], b[2], c[2]}
+        };
+        double[][] cartesian = multiply(multiply(basis, rotated), transpose(basis));
+        return new double[] {
+                cartesian[0][0], cartesian[1][1], cartesian[2][2],
+                cartesian[0][1], cartesian[0][2], cartesian[1][2]
+        };
+    }
+
+    private double[][] multiply(double[][] first, double[][] second) {
+        double[][] result = new double[3][3];
+        for (int row = 0; row < 3; row++) {
+            for (int column = 0; column < 3; column++) {
+                for (int k = 0; k < 3; k++) {
+                    result[row][column] += first[row][k] * second[k][column];
+                }
+            }
+        }
+        return result;
+    }
+
+    private double[][] transpose(double[][] matrix) {
+        double[][] result = new double[3][3];
+        for (int row = 0; row < 3; row++) {
+            for (int column = 0; column < 3; column++) {
+                result[row][column] = matrix[column][row];
+            }
         }
         return result;
     }

@@ -37,6 +37,89 @@ class CifParserTest {
     }
 
     @Test
+    void readsAnisoUijAndConvertsToCartesian() {
+        String cif = """
+                data_test
+                _cell_length_a 5.0
+                _cell_length_b 5.0
+                _cell_length_c 5.0
+                _cell_angle_alpha 90
+                _cell_angle_beta 90
+                _cell_angle_gamma 90
+                _symmetry_equiv_pos_as_xyz 'x, y, z'
+                loop_
+                _atom_site_label
+                _atom_site_type_symbol
+                _atom_site_fract_x
+                _atom_site_fract_y
+                _atom_site_fract_z
+                Na1 Na 0.1 0.2 0.3
+                loop_
+                _atom_site_aniso_label
+                _atom_site_aniso_U_11
+                _atom_site_aniso_U_22
+                _atom_site_aniso_U_33
+                _atom_site_aniso_U_12
+                _atom_site_aniso_U_13
+                _atom_site_aniso_U_23
+                Na1 0.01 0.02 0.03 0.004 0 0
+                """;
+
+        Crystal crystal = new CifParser().parse("na.cif", cif);
+        double[] uij = crystal.atoms().getFirst().uij();
+
+        assertEquals(0.25, uij[0], 1.0e-9);
+        assertEquals(0.5, uij[1], 1.0e-9);
+        assertEquals(0.75, uij[2], 1.0e-9);
+        assertEquals(0.1, uij[3], 1.0e-9);
+        assertEquals(0.0, uij[4], 1.0e-9);
+    }
+
+    @Test
+    void rotatesAnisoUnderSymmetry() {
+        String cif = """
+                data_test
+                _cell_length_a 5.0
+                _cell_length_b 5.0
+                _cell_length_c 5.0
+                _cell_angle_alpha 90
+                _cell_angle_beta 90
+                _cell_angle_gamma 90
+                loop_
+                _symmetry_equiv_pos_as_xyz
+                x,y,z
+                -x,-y,z
+                loop_
+                _atom_site_label
+                _atom_site_type_symbol
+                _atom_site_fract_x
+                _atom_site_fract_y
+                _atom_site_fract_z
+                Na1 Na 0.2 0.3 0.4
+                loop_
+                _atom_site_aniso_label
+                _atom_site_aniso_U_11
+                _atom_site_aniso_U_22
+                _atom_site_aniso_U_33
+                _atom_site_aniso_U_12
+                _atom_site_aniso_U_13
+                _atom_site_aniso_U_23
+                Na1 0.01 0.02 0.03 0.004 0.005 0.006
+                """;
+
+        Crystal crystal = new CifParser().parse("na.cif", cif);
+
+        assertEquals(2, crystal.atoms().size());
+        double[] first = crystal.atoms().get(0).uij();
+        double[] second = crystal.atoms().get(1).uij();
+        assertEquals(0.125, Math.abs(first[4]), 1.0e-9);
+        assertEquals(0.15, Math.abs(first[5]), 1.0e-9);
+        assertEquals(-first[4], second[4], 1.0e-9);
+        assertEquals(-first[5], second[5], 1.0e-9);
+        assertEquals(first[3], second[3], 1.0e-9);
+    }
+
+    @Test
     void appliesTranslationsAndDeduplicates() {
         String cif = """
                 data_test

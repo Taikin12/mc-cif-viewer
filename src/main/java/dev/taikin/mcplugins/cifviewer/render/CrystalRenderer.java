@@ -4,6 +4,7 @@ import dev.taikin.mcplugins.cifviewer.CifConfig;
 import dev.taikin.mcplugins.cifviewer.CifViewerPlugin;
 import dev.taikin.mcplugins.cifviewer.model.Crystal;
 import dev.taikin.miviewer.common.ElementInfo;
+import dev.taikin.miviewer.common.ThermalEllipsoid;
 import dev.taikin.mcplugins.cifviewer.model.Lattice;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.DyedItemColor;
@@ -48,6 +49,7 @@ public final class CrystalRenderer {
     private static final int MAX_BONDS = 4000;
     private static final int MAX_LABELS = 200;
     private static final int MAX_POLYHEDRON_CENTERS = 32;
+    private static final double ELLIPSOID_50_PERCENT = 1.538;
 
     public record ModelRef(UUID playerId, int modelId) {
     }
@@ -305,6 +307,7 @@ public final class CrystalRenderer {
         session.showLabels(false);
         session.showPolyhedron(false);
         session.showPolyhedronFaces(true);
+        session.showEllipsoids(true);
         session.showMiller(false);
         session.miller(1, 0, 0);
         session.selectedAtoms(List.of());
@@ -374,6 +377,12 @@ public final class CrystalRenderer {
     public void togglePolyhedronFaces(Player player) {
         ViewSession session = requireSession(player);
         session.showPolyhedronFaces(!session.showPolyhedronFaces());
+        refresh(player, session);
+    }
+
+    public void toggleEllipsoids(Player player) {
+        ViewSession session = requireSession(player);
+        session.showEllipsoids(!session.showEllipsoids());
         refresh(player, session);
     }
 
@@ -715,57 +724,72 @@ public final class CrystalRenderer {
                 renderedMaxY = Math.max(renderedMaxY, position.getY());
 
                 int[] rgb = plugin.config().atomColor(atom.atom.element());
-                double atomScale;
-                if (session.spaceFilling() && mode == CifConfig.RenderMode.MODEL) {
-                    double radiusAngstrom = switch (session.radiusMode()) {
-                        case VDW -> ElementInfo.vanDerWaalsRadius(atom.atom.element());
-                        case IONIC -> ElementInfo.ionicRadius(atom.atom.element(), atom.atom.charge());
-                        case COVALENT -> ElementInfo.radius(atom.atom.element());
-                    };
-                    atomScale = 2.0 * radiusAngstrom * scale * (session.atomScale() / 2.0);
+                double radius;
+                Location location = new Location(world,
+                        origin.getX() + position.getX(),
+                        origin.getY() + position.getY(),
+                        origin.getZ() + position.getZ());
+                Entity display;
+                double[] uij = atom.atom.uij();
+                if (session.showEllipsoids() && !session.spaceFilling()
+                        && mode == CifConfig.RenderMode.MODEL && uij != null) {
+                    ThermalEllipsoid.Ellipsoid ellipsoid = ThermalEllipsoid.decompose(
+                            uij[0], uij[1], uij[2], uij[3], uij[4], uij[5]);
+                    double base = plugin.config().atomScale();
+                    double relative = base > 0.0 ? session.atomScale() / base : 1.0;
+                    double[] semiAxes = new double[3];
+                    for (int axis = 0; axis < 3; axis++) {
+                        semiAxes[axis] = Math.max(0.02,
+                                ellipsoid.axes()[axis] * ELLIPSOID_50_PERCENT * scale * relative);
+                    }
+                    radius = Math.max(semiAxes[0], Math.max(semiAxes[1], semiAxes[2]));
+                    display = spawnEllipsoid(world, location, rgb, semiAxes, ellipsoid.rotation());
                 } else {
-                    atomScale = session.atomScale() * (ElementInfo.radius(atom.atom.element()) / 1.4);
+                    double atomScale;
+                    if (session.spaceFilling() && mode == CifConfig.RenderMode.MODEL) {
+                        double radiusAngstrom = switch (session.radiusMode()) {
+                            case VDW -> ElementInfo.vanDerWaalsRadius(atom.atom.element());
+                            case IONIC -> ElementInfo.ionicRadius(atom.atom.element(), atom.atom.charge());
+                            case COVALENT -> ElementInfo.radius(atom.atom.element());
+                        };
+                        atomScale = 2.0 * radiusAngstrom * scale * (session.atomScale() / 2.0);
+                    } else {
+                        atomScale = session.atomScale() * (ElementInfo.radius(atom.atom.element()) / 1.4);
+                    }
+                    if (mode == CifConfig.RenderMode.CIRCLE) {
+                        atomScale *= 1.15;
+                    }
+                    atomScale = Math.max(0.2, Math.min(session.spaceFilling() ? 20.0 : 6.0, atomScale));
+                    radius = atomScale / 2.0;
+                    if (mode == CifConfig.RenderMode.MODEL) {
+                        display = spawnItem(world, location, rgb, (float) atomScale);
+                    } else {
+                        int alpha = (int) Math.round(200.0 * (0.45 + 0.55 * atom.atom.occupancy()));
+                        Color background;
+                        TextColor textColor;
+                        String glyph;
+                        if (mode == CifConfig.RenderMode.CIRCLE) {
+                            background = Color.fromARGB(0, 0, 0, 0);
+                            textColor = TextColor.color(rgb[0], rgb[1], rgb[2]);
+                            glyph = "\u25CF";
+                        } else {
+                            background = Color.fromARGB(alpha, rgb[0], rgb[1], rgb[2]);
+                            textColor = luminance(rgb) >= 145
+                                    ? TextColor.color(0, 0, 0)
+                                    : TextColor.color(255, 255, 255);
+                            glyph = atom.atom.element();
+                        }
+                        display = spawn(world, location, Component.text(glyph, textColor),
+                                background, (float) atomScale,
+                                mode == CifConfig.RenderMode.CIRCLE && plugin.config().sphereShadow());
+                    }
                 }
-                if (mode == CifConfig.RenderMode.CIRCLE) {
-                    atomScale *= 1.15;
-                }
-                atomScale = Math.max(0.2, Math.min(session.spaceFilling() ? 20.0 : 6.0, atomScale));
-
-                double radius = atomScale / 2.0;
                 minX = Math.min(minX, position.getX() - radius);
                 minY = Math.min(minY, position.getY() - radius);
                 minZ = Math.min(minZ, position.getZ() - radius);
                 maxX = Math.max(maxX, position.getX() + radius);
                 maxY = Math.max(maxY, position.getY() + radius);
                 maxZ = Math.max(maxZ, position.getZ() + radius);
-
-                Location location = new Location(world,
-                        origin.getX() + position.getX(),
-                        origin.getY() + position.getY(),
-                        origin.getZ() + position.getZ());
-                Entity display;
-                if (mode == CifConfig.RenderMode.MODEL) {
-                    display = spawnItem(world, location, rgb, (float) atomScale);
-                } else {
-                    int alpha = (int) Math.round(200.0 * (0.45 + 0.55 * atom.atom.occupancy()));
-                    Color background;
-                    TextColor textColor;
-                    String glyph;
-                    if (mode == CifConfig.RenderMode.CIRCLE) {
-                        background = Color.fromARGB(0, 0, 0, 0);
-                        textColor = TextColor.color(rgb[0], rgb[1], rgb[2]);
-                        glyph = "\u25CF";
-                    } else {
-                        background = Color.fromARGB(alpha, rgb[0], rgb[1], rgb[2]);
-                        textColor = luminance(rgb) >= 145
-                                ? TextColor.color(0, 0, 0)
-                                : TextColor.color(255, 255, 255);
-                        glyph = atom.atom.element();
-                    }
-                    display = spawn(world, location, Component.text(glyph, textColor),
-                            background, (float) atomScale,
-                            mode == CifConfig.RenderMode.CIRCLE && plugin.config().sphereShadow());
-                }
                 entities.add(display.getUniqueId());
                 if (glowing.contains(atomIndex)) {
                     display.setGlowing(true);
@@ -774,7 +798,7 @@ public final class CrystalRenderer {
                         ? atom.atom.element()
                         : atom.atom.label();
                 markers.add(new ViewSession.AtomMarker(atomIndex, label, atom.atom.element(),
-                        position.clone(), atomScale / 2.0, rgb));
+                        position.clone(), radius, rgb));
             }
             session.atomMarkers(markers);
 
@@ -1360,6 +1384,32 @@ public final class CrystalRenderer {
             entity.addScoreboardTag(TAG);
         });
         entities.add(display.getUniqueId());
+    }
+
+    private ItemDisplay spawnEllipsoid(World world, Location location, int[] rgb,
+            double[] semiAxes, double[][] rotation) {
+        ItemStack item = new ItemStack(Material.PAPER);
+        item.setData(DataComponentTypes.ITEM_MODEL, Key.key("cifviewer", "sphere"));
+        item.setData(DataComponentTypes.DYED_COLOR,
+                DyedItemColor.dyedItemColor(Color.fromRGB(rgb[0], rgb[1], rgb[2])));
+        AxisAngle4f axisAngle = new AxisAngle4f().set(new Matrix3f(
+                (float) rotation[0][0], (float) rotation[0][1], (float) rotation[0][2],
+                (float) rotation[1][0], (float) rotation[1][1], (float) rotation[1][2],
+                (float) rotation[2][0], (float) rotation[2][1], (float) rotation[2][2]));
+        return world.spawn(location, ItemDisplay.class, entity -> {
+            entity.setItemStack(item);
+            entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+            entity.setBillboard(Display.Billboard.FIXED);
+            entity.setViewRange(1.5f);
+            entity.setPersistent(false);
+            entity.setTransformation(new Transformation(
+                    new Vector3f(),
+                    axisAngle,
+                    new Vector3f((float) (2.0 * semiAxes[0]),
+                            (float) (2.0 * semiAxes[1]), (float) (2.0 * semiAxes[2])),
+                    new AxisAngle4f()));
+            entity.addScoreboardTag(TAG);
+        });
     }
 
     private ItemDisplay spawnStick(World world, Location location, Vector direction, double length,

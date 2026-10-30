@@ -24,6 +24,7 @@ public final class CifControlGui {
     private static final int MODELS = 0;
     private static final int INFO = 4;
     private static final int BONDS = 6;
+    private static final int ELLIPSOIDS = 5;
     private static final int SHARE = 7;
     private static final int UNIT_CELL = 8;
     private static final int LABELS = 10;
@@ -99,6 +100,7 @@ public final class CifControlGui {
                 case RECENTER -> plugin.renderer().replaceOrigin(player);
                 case SPACE_FILLING -> plugin.renderer().toggleSpaceFilling(player);
                 case BONDS -> plugin.renderer().toggleBonds(player);
+                case ELLIPSOIDS -> plugin.renderer().toggleEllipsoids(player);
                 case SHARE -> plugin.renderer().toggleSharedEdit(player);
                 case UNIT_CELL -> plugin.renderer().toggleUnitCell(player);
                 case LABELS -> plugin.renderer().toggleLabels(player);
@@ -161,6 +163,7 @@ public final class CifControlGui {
         inventory.setItem(MODELS, button(Material.CHEST, "モデル一覧",
                 List.of(value("複数モデルの選択 / 削除"), value("選択中: #" + session.id()))));
         inventory.setItem(BONDS, bondsButton(session));
+        inventory.setItem(ELLIPSOIDS, ellipsoidsButton(session));
         inventory.setItem(SHARE, shareButton(session));
         inventory.setItem(UNIT_CELL, unitCellButton(session));
         inventory.setItem(LABELS, labelsButton(session));
@@ -230,6 +233,7 @@ public final class CifControlGui {
         lore.add(value("選択原子: " + session.selectedAtoms().size()));
         lore.add(value("配位多面体: " + (session.showPolyhedron() ? "ON" : "OFF")
                 + " (中心 " + session.polyhedronCenters().size() + ")"));
+        lore.add(value("熱振動楕円体: " + (session.showEllipsoids() ? "ON" : "OFF")));
         lore.add(value("多面体の面: " + (session.showPolyhedronFaces() ? "ON" : "OFF")));
         lore.add(value("Miller面: " + (session.showMiller() ? "ON " : "OFF ")
                 + "(" + session.millerH() + " " + session.millerK() + " " + session.millerL() + ")"));
@@ -268,6 +272,15 @@ public final class CifControlGui {
         return button(Material.CYAN_STAINED_GLASS_PANE, "Miller面: OFF " + hkl,
                 List.of(value("クリックで表示"),
                         value("/cif miller <h> <k> <l> で変更")));
+    }
+
+    private ItemStack ellipsoidsButton(ViewSession session) {
+        if (session.showEllipsoids()) {
+            return button(Material.FIREWORK_STAR, "熱振動楕円体: ON",
+                    List.of(value("CIF の Uij から楕円体表示"), value("50% 確率面"), value("クリックで球表示")));
+        }
+        return button(Material.GUNPOWDER, "熱振動楕円体: OFF",
+                List.of(value("CIF に aniso Uij がある場合のみ表示"), value("クリックで楕円体表示")));
     }
 
     private ItemStack polyhedronFacesButton(ViewSession session) {

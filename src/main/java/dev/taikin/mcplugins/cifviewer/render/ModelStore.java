@@ -201,6 +201,7 @@ public final class ModelStore {
         section.set("show-labels", session.showLabels());
         section.set("polyhedron", session.showPolyhedron());
         section.set("polyhedron-faces", session.showPolyhedronFaces());
+        section.set("ellipsoids", session.showEllipsoids());
         section.set("polyhedron-centers", session.polyhedronCenters());
         section.set("miller", session.showMiller());
         section.set("miller-hkl", List.of(session.millerH(), session.millerK(), session.millerL()));
@@ -289,6 +290,7 @@ public final class ModelStore {
         session.showLabels(section.getBoolean("show-labels", false));
         session.showPolyhedron(section.getBoolean("polyhedron", false));
         session.showPolyhedronFaces(section.getBoolean("polyhedron-faces", true));
+        session.showEllipsoids(section.getBoolean("ellipsoids", true));
         session.polyhedronCenters(section.getIntegerList("polyhedron-centers"));
         session.showMiller(section.getBoolean("miller", false));
         List<Integer> hkl = section.getIntegerList("miller-hkl");
