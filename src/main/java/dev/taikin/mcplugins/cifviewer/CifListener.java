@@ -227,6 +227,14 @@ public final class CifListener implements Listener {
                     + " を選択しました。", NamedTextColor.GREEN));
             return;
         }
+        if (heldType == CifWand.WandType.VIEW) {
+            try {
+                plugin.renderer().rotateAroundAxis(player, rightClick ? -15.0 : 15.0);
+            } catch (IllegalStateException e) {
+                player.sendMessage(Component.text(e.getMessage(), NamedTextColor.RED));
+            }
+            return;
+        }
         if (rightClick || heldType == null || heldType == CifWand.WandType.MENU) {
             plugin.controlGui().open(player);
             return;
