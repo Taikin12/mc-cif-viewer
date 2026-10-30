@@ -6,6 +6,7 @@ import dev.taikin.mcplugins.cifviewer.gui.CifModelListGuiHolder;
 import dev.taikin.mcplugins.cifviewer.gui.CifRepeatGuiHolder;
 import dev.taikin.mcplugins.cifviewer.render.CrystalRenderer;
 import dev.taikin.mcplugins.cifviewer.render.ViewSession;
+import dev.taikin.miviewer.common.WandItems;
 import io.papermc.paper.event.player.PlayerPickEntityEvent;
 import java.util.UUID;
 import net.kyori.adventure.text.Component;
@@ -48,6 +49,10 @@ public final class CifListener implements Listener {
         }
 
         Player player = event.getPlayer();
+        if (!ownsWand(player, item)) {
+            return;
+        }
+        WandItems.setHeldTarget(player, WandItems.ViewerTarget.CIF);
         Action action = event.getAction();
         if (wandType == CifWand.WandType.ATOM) {
             event.setCancelled(true);
@@ -63,26 +68,46 @@ public final class CifListener implements Listener {
             }
             return;
         }
+        Block clicked = event.getClickedBlock();
+        BlockFace face = event.getBlockFace();
         if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
             event.setCancelled(true);
-            plugin.controlGui().open(player);
+            try {
+                if (player.isSneaking()) {
+                    if (clicked != null && face != null) {
+                        Location origin = clicked.getRelative(face).getLocation().add(0.5, 0.5, 0.5);
+                        plugin.renderer().setOrigin(player, origin);
+                        player.sendMessage(Component.text("原点（結晶の0,0,0）をブロック ("
+                                + origin.getBlockX() + ", " + origin.getBlockY() + ", "
+                                + origin.getBlockZ() + ") に設定しました。", NamedTextColor.GREEN));
+                    } else {
+                        player.sendActionBar(Component.text(
+                                "ブロック面をスニーク+右クリックで原点を設定", NamedTextColor.AQUA));
+                    }
+                } else {
+                    plugin.renderer().rotateAroundAxis(player, -15.0);
+                }
+            } catch (IllegalStateException e) {
+                player.sendMessage(Component.text(e.getMessage(), NamedTextColor.RED));
+            }
         } else if (action == Action.LEFT_CLICK_AIR || action == Action.LEFT_CLICK_BLOCK) {
             event.setCancelled(true);
             try {
-                Block clicked = event.getClickedBlock();
-                BlockFace face = event.getBlockFace();
-                if (player.isSneaking() && clicked != null && face != null) {
-                    Location origin = clicked.getRelative(face).getLocation().add(0.5, 0.5, 0.5);
-                    plugin.renderer().setOrigin(player, origin);
-                    player.sendMessage(Component.text("原点（結晶の0,0,0）をブロック ("
-                            + origin.getBlockX() + ", " + origin.getBlockY() + ", "
-                            + origin.getBlockZ() + ") に設定しました。", NamedTextColor.GREEN));
-                } else if (clicked != null && face != null) {
-                    ViewSession.Axis axis = axisFor(face);
-                    plugin.renderer().setRotationAxis(player, axis);
-                    player.sendActionBar(Component.text("回転軸: " + axis.name(), NamedTextColor.AQUA));
+                if (player.isSneaking()) {
+                    if (clicked != null && face != null) {
+                        ViewSession.Axis axis = axisFor(face);
+                        plugin.renderer().setRotationAxis(player, axis);
+                        player.sendActionBar(Component.text("回転軸: " + axis.name(), NamedTextColor.AQUA));
+                    } else {
+                        plugin.renderer().cycleRotationAxis(player);
+                        ViewSession current = plugin.renderer().session(player);
+                        if (current != null) {
+                            player.sendActionBar(Component.text("回転軸: " + current.rotationAxis().name(),
+                                    NamedTextColor.AQUA));
+                        }
+                    }
                 } else {
-                    plugin.renderer().rotateAroundAxis(player, player.isSneaking() ? -15.0 : 15.0);
+                    plugin.renderer().rotateAroundAxis(player, 15.0);
                 }
             } catch (IllegalStateException e) {
                 player.sendMessage(Component.text(e.getMessage(), NamedTextColor.RED));
@@ -96,17 +121,27 @@ public final class CifListener implements Listener {
             return;
         }
         Player player = event.getPlayer();
-        CifWand.WandType heldType = plugin.wand().type(player.getInventory().getItemInMainHand());
+        ItemStack held = player.getInventory().getItemInMainHand();
+        CifWand.WandType heldType = plugin.wand().type(held);
+        CrystalRenderer.ModelRef ref = plugin.renderer().modelRef(event.getRightClicked().getUniqueId());
         if (heldType == CifWand.WandType.ATOM) {
+            if (ref == null && !ownsWand(player, held)) {
+                return;
+            }
             event.setCancelled(true);
+            if (ref != null) {
+                WandItems.setHeldTarget(player, WandItems.ViewerTarget.CIF);
+            }
             handleAtomInteract(player, Action.RIGHT_CLICK_AIR);
             return;
         }
-        CrystalRenderer.ModelRef ref = plugin.renderer().modelRef(event.getRightClicked().getUniqueId());
         if (ref == null) {
             return;
         }
         event.setCancelled(true);
+        if (heldType != null) {
+            WandItems.setHeldTarget(player, WandItems.ViewerTarget.CIF);
+        }
         handleModelClick(player, ref, true, heldType);
     }
 
@@ -118,6 +153,9 @@ public final class CifListener implements Listener {
         }
         event.setCancelled(true);
         Player player = event.getPlayer();
+        if (plugin.wand().type(player.getInventory().getItemInMainHand()) != null) {
+            WandItems.setHeldTarget(player, WandItems.ViewerTarget.CIF);
+        }
         if (!plugin.renderer().select(player, ref.modelId())) {
             player.sendMessage(Component.text("モデル #" + ref.modelId() + " はありません。",
                     NamedTextColor.GRAY));
@@ -150,6 +188,9 @@ public final class CifListener implements Listener {
             return;
         }
         event.setCancelled(true);
+        if (plugin.wand().type(player.getInventory().getItemInMainHand()) != null) {
+            WandItems.setHeldTarget(player, WandItems.ViewerTarget.CIF);
+        }
         CifWand.WandType heldType = plugin.wand().type(player.getInventory().getItemInMainHand());
         if (heldType == CifWand.WandType.ATOM) {
             handleAtomInteract(player, Action.LEFT_CLICK_AIR);
@@ -160,6 +201,9 @@ public final class CifListener implements Listener {
 
     private void handleModelClick(Player player, CrystalRenderer.ModelRef ref, boolean rightClick,
             CifWand.WandType heldType) {
+        if (plugin.wand().type(player.getInventory().getItemInMainHand()) != null) {
+            WandItems.setHeldTarget(player, WandItems.ViewerTarget.CIF);
+        }
         if (!plugin.renderer().select(player, ref.modelId())) {
             player.sendMessage(Component.text("モデル #" + ref.modelId() + " はありません。",
                     NamedTextColor.GRAY));
@@ -193,8 +237,8 @@ public final class CifListener implements Listener {
             String text;
             if (action == Action.RIGHT_CLICK_AIR || action == Action.RIGHT_CLICK_BLOCK) {
                 text = player.isSneaking()
-                        ? plugin.renderer().togglePolyhedronCenter(player)
-                        : plugin.renderer().addAtomSelection(player);
+                        ? plugin.renderer().addAtomSelection(player)
+                        : plugin.renderer().togglePolyhedronCenter(player);
             } else {
                 text = player.isSneaking()
                         ? plugin.renderer().clearPolyhedronCenters(player)
@@ -204,6 +248,14 @@ public final class CifListener implements Listener {
         } catch (IllegalStateException e) {
             player.sendMessage(Component.text(e.getMessage(), NamedTextColor.RED));
         }
+    }
+
+    private boolean ownsWand(Player player, ItemStack item) {
+        WandItems.ViewerTarget target = plugin.wand().target(item);
+        if (target == null || target == WandItems.ViewerTarget.CIF) {
+            return true;
+        }
+        return plugin.getServer().getPluginManager().getPlugin("McMolView") == null;
     }
 
     private ViewSession.Axis axisFor(BlockFace face) {

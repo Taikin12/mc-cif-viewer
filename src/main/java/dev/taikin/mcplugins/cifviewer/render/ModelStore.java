@@ -200,7 +200,10 @@ public final class ModelStore {
         section.set("bonds", session.showBonds());
         section.set("show-labels", session.showLabels());
         section.set("polyhedron", session.showPolyhedron());
+        section.set("polyhedron-faces", session.showPolyhedronFaces());
         section.set("polyhedron-centers", session.polyhedronCenters());
+        section.set("miller", session.showMiller());
+        section.set("miller-hkl", List.of(session.millerH(), session.millerK(), session.millerL()));
         section.set("radius-mode", session.radiusMode().name());
     }
 
@@ -285,7 +288,13 @@ public final class ModelStore {
         session.showBonds(section.getBoolean("bonds", false));
         session.showLabels(section.getBoolean("show-labels", false));
         session.showPolyhedron(section.getBoolean("polyhedron", false));
+        session.showPolyhedronFaces(section.getBoolean("polyhedron-faces", true));
         session.polyhedronCenters(section.getIntegerList("polyhedron-centers"));
+        session.showMiller(section.getBoolean("miller", false));
+        List<Integer> hkl = section.getIntegerList("miller-hkl");
+        if (hkl.size() == 3) {
+            session.miller(hkl.get(0), hkl.get(1), hkl.get(2));
+        }
         try {
             session.radiusMode(ViewSession.RadiusMode.valueOf(
                     section.getString("radius-mode", "VDW").toUpperCase(Locale.ROOT)));

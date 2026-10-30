@@ -2,6 +2,7 @@ package dev.taikin.mcplugins.cifviewer.render;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -26,11 +27,26 @@ public final class PolyhedronGeometry {
     }
 
     public static List<Edge> convexHullEdges(List<Vector> points) {
+        Set<Edge> edges = new LinkedHashSet<>();
+        for (List<Integer> face : convexHullFaces(points)) {
+            for (int index = 0; index < face.size(); index++) {
+                int first = face.get(index);
+                int second = face.get((index + 1) % face.size());
+                if (first != second) {
+                    edges.add(new Edge(first, second));
+                }
+            }
+        }
+        return List.copyOf(edges);
+    }
+
+    public static List<List<Integer>> convexHullFaces(List<Vector> points) {
         if (points.size() < 3) {
             return List.of();
         }
         double tolerance = Math.max(1.0e-8, diameter(points) * 1.0e-6);
-        Set<Edge> edges = new LinkedHashSet<>();
+        List<List<Integer>> faces = new ArrayList<>();
+        Set<List<Integer>> seen = new HashSet<>();
 
         for (int i = 0; i < points.size() - 2; i++) {
             Vector a = points.get(i);
@@ -63,17 +79,25 @@ public final class PolyhedronGeometry {
                             coplanar.add(index);
                         }
                     }
-                    addFaceBoundary(coplanar, points, normal, tolerance, edges);
+                    List<Integer> key = new ArrayList<>(coplanar);
+                    key.sort(Integer::compareTo);
+                    if (!seen.add(key)) {
+                        continue;
+                    }
+                    List<Integer> boundary = faceBoundary(coplanar, points, normal, tolerance);
+                    if (boundary.size() >= 3) {
+                        faces.add(boundary);
+                    }
                 }
             }
         }
-        return List.copyOf(edges);
+        return List.copyOf(faces);
     }
 
-    private static void addFaceBoundary(List<Integer> indices, List<Vector> points,
-            Vector normal, double tolerance, Set<Edge> edges) {
+    private static List<Integer> faceBoundary(List<Integer> indices, List<Vector> points,
+            Vector normal, double tolerance) {
         if (indices.size() < 3) {
-            return;
+            return List.of();
         }
         Vector origin = points.get(indices.getFirst());
         Vector u = null;
@@ -85,7 +109,7 @@ public final class PolyhedronGeometry {
             }
         }
         if (u == null) {
-            return;
+            return List.of();
         }
         Vector v = normal.clone().crossProduct(u).normalize();
         List<Projected> projected = new ArrayList<>(indices.size());
@@ -113,13 +137,16 @@ public final class PolyhedronGeometry {
         lower.removeLast();
         upper.removeLast();
         lower.addAll(upper);
-        for (int index = 0; index < lower.size(); index++) {
-            int first = lower.get(index).index();
-            int second = lower.get((index + 1) % lower.size()).index();
-            if (first != second) {
-                edges.add(new Edge(first, second));
+        List<Integer> boundary = new ArrayList<>(lower.size());
+        for (Projected point : lower) {
+            if (boundary.isEmpty() || boundary.getLast() != point.index()) {
+                boundary.add(point.index());
             }
         }
+        if (boundary.size() > 1 && boundary.getFirst().equals(boundary.getLast())) {
+            boundary.removeLast();
+        }
+        return boundary;
     }
 
     private static double cross(Projected a, Projected b, Projected c) {

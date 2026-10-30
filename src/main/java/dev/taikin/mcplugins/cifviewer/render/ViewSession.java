@@ -44,6 +44,11 @@ public final class ViewSession {
     private boolean showBonds;
     private boolean showLabels;
     private boolean showPolyhedron;
+    private boolean showPolyhedronFaces = true;
+    private boolean showMiller;
+    private int millerH = 1;
+    private int millerK;
+    private int millerL;
     private List<Integer> selectedAtoms = List.of();
     private List<Integer> polyhedronCenters = List.of();
     private List<AtomMarker> atomMarkers = List.of();
@@ -141,6 +146,26 @@ public final class ViewSession {
 
     public boolean showPolyhedron() {
         return showPolyhedron;
+    }
+
+    public boolean showPolyhedronFaces() {
+        return showPolyhedronFaces;
+    }
+
+    public boolean showMiller() {
+        return showMiller;
+    }
+
+    public int millerH() {
+        return millerH;
+    }
+
+    public int millerK() {
+        return millerK;
+    }
+
+    public int millerL() {
+        return millerL;
     }
 
     public List<Integer> selectedAtoms() {
@@ -253,6 +278,20 @@ public final class ViewSession {
 
     void showPolyhedron(boolean showPolyhedron) {
         this.showPolyhedron = showPolyhedron;
+    }
+
+    void showPolyhedronFaces(boolean showPolyhedronFaces) {
+        this.showPolyhedronFaces = showPolyhedronFaces;
+    }
+
+    void showMiller(boolean showMiller) {
+        this.showMiller = showMiller;
+    }
+
+    void miller(int h, int k, int l) {
+        this.millerH = h;
+        this.millerK = k;
+        this.millerL = l;
     }
 
     void selectedAtoms(List<Integer> selectedAtoms) {

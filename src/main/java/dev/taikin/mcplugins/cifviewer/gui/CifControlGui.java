@@ -28,6 +28,10 @@ public final class CifControlGui {
     private static final int UNIT_CELL = 8;
     private static final int LABELS = 10;
     private static final int POLYHEDRON = 12;
+    private static final int POLYHEDRON_FACES = 14;
+    private static final int CENTER_ADD = 19;
+    private static final int CENTER_CLEAR = 21;
+    private static final int MILLER = 23;
     private static final int SCALE_UP = 9;
     private static final int REPEAT_UP = 11;
     private static final int ATOM_SCALE_UP = 13;
@@ -99,6 +103,10 @@ public final class CifControlGui {
                 case UNIT_CELL -> plugin.renderer().toggleUnitCell(player);
                 case LABELS -> plugin.renderer().toggleLabels(player);
                 case POLYHEDRON -> plugin.renderer().togglePolyhedron(player);
+                case POLYHEDRON_FACES -> plugin.renderer().togglePolyhedronFaces(player);
+                case CENTER_ADD -> plugin.renderer().togglePolyhedronCenter(player);
+                case CENTER_CLEAR -> plugin.renderer().clearPolyhedronCenters(player);
+                case MILLER -> plugin.renderer().toggleMiller(player);
                 case RADIUS_MODE -> plugin.renderer().cycleRadiusMode(player);
                 case RESET -> plugin.renderer().reset(player);
                 case ROTATION_AXIS -> plugin.renderer().cycleRotationAxis(player);
@@ -157,6 +165,13 @@ public final class CifControlGui {
         inventory.setItem(UNIT_CELL, unitCellButton(session));
         inventory.setItem(LABELS, labelsButton(session));
         inventory.setItem(POLYHEDRON, polyhedronButton(session));
+        inventory.setItem(POLYHEDRON_FACES, polyhedronFacesButton(session));
+        inventory.setItem(CENTER_ADD, button(Material.SPYGLASS, "多面体中心を追加 / 解除",
+                List.of(value("クロスヘアの原子を中心に登録"), value("中心: "
+                        + session.polyhedronCenters().size() + " / 32"))));
+        inventory.setItem(CENTER_CLEAR, button(Material.BARRIER, "多面体中心をすべて解除",
+                List.of(value("登録済みの中心をクリア"))));
+        inventory.setItem(MILLER, millerButton(session));
         inventory.setItem(INFO, info(session));
         inventory.setItem(SCALE_UP, button(Material.LIME_STAINED_GLASS_PANE, "全体サイズ +",
                 List.of(value("ブロック/Å: " + number(session.blocksPerAngstrom())))));
@@ -215,6 +230,9 @@ public final class CifControlGui {
         lore.add(value("選択原子: " + session.selectedAtoms().size()));
         lore.add(value("配位多面体: " + (session.showPolyhedron() ? "ON" : "OFF")
                 + " (中心 " + session.polyhedronCenters().size() + ")"));
+        lore.add(value("多面体の面: " + (session.showPolyhedronFaces() ? "ON" : "OFF")));
+        lore.add(value("Miller面: " + (session.showMiller() ? "ON " : "OFF ")
+                + "(" + session.millerH() + " " + session.millerK() + " " + session.millerL() + ")"));
         lore.add(value("充填半径: " + radiusModeName(session.radiusMode())));
         lore.add(value("回転軸: " + session.rotationAxis().name()));
         lore.add(value("原点: 結晶の0,0,0"));
@@ -238,6 +256,27 @@ public final class CifControlGui {
         }
         return button(Material.SNOWBALL, "表示: 球体",
                 List.of(value("クリックで空間充填に変更"), value("半径: 共有結合半径ベース")));
+    }
+
+    private ItemStack millerButton(ViewSession session) {
+        String hkl = "(" + session.millerH() + " " + session.millerK() + " " + session.millerL() + ")";
+        if (session.showMiller()) {
+            return button(Material.LIGHT_BLUE_STAINED_GLASS_PANE, "Miller面: ON " + hkl,
+                    List.of(value("クリックで非表示"),
+                            value("/cif miller <h> <k> <l> で変更")));
+        }
+        return button(Material.CYAN_STAINED_GLASS_PANE, "Miller面: OFF " + hkl,
+                List.of(value("クリックで表示"),
+                        value("/cif miller <h> <k> <l> で変更")));
+    }
+
+    private ItemStack polyhedronFacesButton(ViewSession session) {
+        if (session.showPolyhedronFaces()) {
+            return button(Material.TINTED_GLASS, "多面体の面: ON",
+                    List.of(value("近接原子の凸包面を半透明で表示"), value("クリックで非表示")));
+        }
+        return button(Material.GLASS, "多面体の面: OFF",
+                List.of(value("配位多面体の面塗りを表示"), value("クリックで表示")));
     }
 
     private ItemStack polyhedronButton(ViewSession session) {

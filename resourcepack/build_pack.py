@@ -125,6 +125,116 @@ def build_stick_model() -> dict:
     }
 
 
+def build_wand_texture(handle: tuple[int, int, int], gem: tuple[int, int, int],
+                       accent: tuple[int, int, int], kind: str) -> bytes:
+    size = 16
+    pixels = [[(0, 0, 0, 0) for _ in range(size)] for _ in range(size)]
+
+    def put(x: int, y: int, color: tuple[int, int, int]) -> None:
+        if 0 <= x < size and 0 <= y < size:
+            pixels[y][x] = (color[0], color[1], color[2], 255)
+
+    dark = tuple(max(0, channel - 60) for channel in handle)
+    for i in range(8):
+        put(3 + i, 14 - i, handle)
+        put(4 + i, 14 - i, handle)
+        put(4 + i, 15 - i, dark)
+    put(3, 14, dark)
+    put(3, 15, dark)
+
+    center_x, center_y = 10, 5
+    if kind == "menu":
+        for dx in range(-1, 2):
+            for dy in range(-1, 2):
+                put(center_x + dx, center_y + dy, gem)
+        put(center_x - 1, center_y - 1, accent)
+        put(center_x, center_y - 1, accent)
+    elif kind == "view":
+        for dx in range(-2, 3):
+            for dy in range(-2, 3):
+                if abs(dx) + abs(dy) <= 2 and not (dx == 0 and dy == 0):
+                    put(center_x + dx, center_y + dy, gem)
+        put(center_x, center_y, accent)
+    else:
+        for dy in range(-2, 3):
+            width = 2 - abs(dy)
+            for dx in range(-width, width + 1):
+                put(center_x + dx, center_y + dy, gem)
+        put(center_x, center_y - 1, accent)
+        put(center_x - 1, center_y, accent)
+
+    rows = []
+    for row in pixels:
+        data = bytearray()
+        for pixel in row:
+            data.extend(pixel)
+        rows.append(b"\x00" + bytes(data))
+    raw = b"".join(rows)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + png_chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0))
+        + png_chunk(b"IDAT", zlib.compress(raw, 9))
+        + png_chunk(b"IEND", b"")
+    )
+
+
+def build_simple_item_definition(model: str) -> dict:
+    return {
+        "model": {
+            "type": "minecraft:model",
+            "model": f"miviewer:item/{model}",
+        }
+    }
+
+
+def build_generated_model(texture: str) -> dict:
+    return {
+        "parent": "minecraft:item/generated",
+        "textures": {"layer0": f"miviewer:item/{texture}"},
+    }
+
+
+def build_face_texture(north: bool) -> bytes:
+    size = 32
+    alpha = 96
+    rows = []
+    for y in range(size):
+        row = bytearray()
+        for x in range(size):
+            u = (x + 0.5) * 16.0 / size
+            v = (y + 0.5) * 16.0 / size
+            inside = v >= u if north else u + v >= 16.0
+            row.extend((255, 255, 255, alpha) if inside else (0, 0, 0, 0))
+        rows.append(b"\x00" + bytes(row))
+    raw = b"".join(rows)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + png_chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0))
+        + png_chunk(b"IDAT", zlib.compress(raw, 9))
+        + png_chunk(b"IEND", b"")
+    )
+
+
+def build_face_model() -> dict:
+    return {
+        "textures": {
+            "particle": "cifviewer:item/face_north",
+            "north": "cifviewer:item/face_north",
+            "south": "cifviewer:item/face_south",
+        },
+        "elements": [
+            {
+                "from": [0, 0, 7.9],
+                "to": [16, 16, 8.1],
+                "faces": {
+                    "north": {"uv": [0, 0, 16, 16], "texture": "#north", "tintindex": 0},
+                    "south": {"uv": [0, 0, 16, 16], "texture": "#south", "tintindex": 0},
+                },
+            }
+        ],
+    }
+
+
 def build_stick_texture() -> bytes:
     width = height = 16
     rows = []
@@ -146,7 +256,7 @@ def build_item_definition(model: str) -> dict:
     return {
         "model": {
             "type": "minecraft:model",
-            "model": f"cifviewer:item/{model}",
+            "model": f"miviewer:item/{model}",
             "tints": [
                 {
                     "type": "minecraft:dye",
@@ -160,6 +270,20 @@ def build_item_definition(model: str) -> dict:
 def main() -> None:
     sphere_model = build_model()
     stick_model = build_stick_model()
+    face_model = build_face_model()
+    wand_textures = {
+        "wand_menu": build_wand_texture((196, 150, 60), (255, 210, 80), (255, 255, 210), "menu"),
+        "wand_view": build_wand_texture((150, 170, 190), (255, 220, 80), (255, 255, 255), "view"),
+        "wand_atom": build_wand_texture((70, 150, 170), (80, 235, 255), (220, 255, 255), "atom"),
+    }
+    texture_source = ROOT / "textures"
+    texture_source.mkdir(parents=True, exist_ok=True)
+    for name, png in list(wand_textures.items()):
+        custom = texture_source / f"{name}.png"
+        if custom.is_file():
+            wand_textures[name] = custom.read_bytes()
+        else:
+            custom.write_bytes(png)
     pack_meta = {
         "pack": {
             "pack_format": PACK_FORMAT,
@@ -174,8 +298,20 @@ def main() -> None:
             "pack.mcmeta": json.dumps(pack_meta, indent=2) + "\n",
             "assets/cifviewer/items/sphere.json": json.dumps(build_item_definition("sphere"), indent=2) + "\n",
             "assets/cifviewer/items/stick.json": json.dumps(build_item_definition("stick"), indent=2) + "\n",
+            "assets/cifviewer/items/face.json": json.dumps(build_item_definition("face"), indent=2) + "\n",
             "assets/cifviewer/models/item/sphere.json": json.dumps(sphere_model, indent=2) + "\n",
             "assets/cifviewer/models/item/stick.json": json.dumps(stick_model, indent=2) + "\n",
+            "assets/cifviewer/models/item/face.json": json.dumps(face_model, indent=2) + "\n",
+            **{
+                f"assets/miviewer/items/{name}.json": json.dumps(
+                    build_simple_item_definition(name), indent=2) + "\n"
+                for name in wand_textures
+            },
+            **{
+                f"assets/miviewer/models/item/{name}.json": json.dumps(
+                    build_generated_model(name), indent=2) + "\n"
+                for name in wand_textures
+            },
         }
         for relative, content in files.items():
             path = root / relative
@@ -185,6 +321,12 @@ def main() -> None:
         texture_dir.mkdir(parents=True, exist_ok=True)
         (texture_dir / "sphere.png").write_bytes(build_texture())
         (texture_dir / "stick.png").write_bytes(build_stick_texture())
+        (texture_dir / "face_north.png").write_bytes(build_face_texture(True))
+        (texture_dir / "face_south.png").write_bytes(build_face_texture(False))
+        wand_texture_dir = root / "assets/miviewer/textures/item"
+        wand_texture_dir.mkdir(parents=True, exist_ok=True)
+        for name, png in wand_textures.items():
+            (wand_texture_dir / f"{name}.png").write_bytes(png)
 
         with zipfile.ZipFile(OUTPUT, "w", zipfile.ZIP_DEFLATED) as archive:
             for path in sorted(root.rglob("*")):

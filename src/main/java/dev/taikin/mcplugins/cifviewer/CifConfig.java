@@ -1,6 +1,6 @@
 package dev.taikin.mcplugins.cifviewer;
 
-import dev.taikin.mcplugins.cifviewer.model.ElementInfo;
+import dev.taikin.miviewer.common.ElementInfo;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;

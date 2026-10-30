@@ -3,7 +3,7 @@ package dev.taikin.mcplugins.cifviewer.render;
 import dev.taikin.mcplugins.cifviewer.CifConfig;
 import dev.taikin.mcplugins.cifviewer.CifViewerPlugin;
 import dev.taikin.mcplugins.cifviewer.model.Crystal;
-import dev.taikin.mcplugins.cifviewer.model.ElementInfo;
+import dev.taikin.miviewer.common.ElementInfo;
 import dev.taikin.mcplugins.cifviewer.model.Lattice;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.DyedItemColor;
@@ -38,7 +38,9 @@ import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Transformation;
 import org.bukkit.util.Vector;
 import org.joml.AxisAngle4f;
+import org.joml.Matrix3f;
 import org.joml.Vector3f;
+import dev.taikin.miviewer.common.MolecularGeometry;
 
 public final class CrystalRenderer {
 
@@ -302,6 +304,9 @@ public final class CrystalRenderer {
         session.showBonds(false);
         session.showLabels(false);
         session.showPolyhedron(false);
+        session.showPolyhedronFaces(true);
+        session.showMiller(false);
+        session.miller(1, 0, 0);
         session.selectedAtoms(List.of());
         session.polyhedronCenters(List.of());
         session.radiusMode(ViewSession.RadiusMode.VDW);
@@ -351,10 +356,50 @@ public final class CrystalRenderer {
 
     public void togglePolyhedron(Player player) {
         ViewSession session = requireSession(player);
-        if (!session.showPolyhedron() && session.polyhedronCenters().isEmpty()) {
-            throw new IllegalStateException("CIF原子棒で多面体中心を選択してください。");
+        if (!session.showPolyhedron()) {
+            if (session.polyhedronCenters().isEmpty()) {
+                if (session.selectedAtoms().isEmpty()) {
+                    throw new IllegalStateException(
+                            "原子棒でスニーク+右クリック、/cif center、または測定用の原子選択をしてください。");
+                }
+                session.polyhedronCenters(session.selectedAtoms());
+            }
+            session.showPolyhedron(true);
+        } else {
+            session.showPolyhedron(false);
         }
-        session.showPolyhedron(!session.showPolyhedron());
+        refresh(player, session);
+    }
+
+    public void togglePolyhedronFaces(Player player) {
+        ViewSession session = requireSession(player);
+        session.showPolyhedronFaces(!session.showPolyhedronFaces());
+        refresh(player, session);
+    }
+
+    public void setMiller(Player player, int h, int k, int l) {
+        ViewSession session = requireEditableSession(player);
+        if (h == 0 && k == 0 && l == 0) {
+            throw new IllegalArgumentException("Miller 指数に 0,0,0 は使えません。");
+        }
+        session.miller(h, k, l);
+        session.showMiller(true);
+        refresh(player, session);
+    }
+
+    public void toggleMiller(Player player) {
+        ViewSession session = requireSession(player);
+        if (!session.showMiller() && session.millerH() == 0
+                && session.millerK() == 0 && session.millerL() == 0) {
+            session.miller(1, 0, 0);
+        }
+        session.showMiller(!session.showMiller());
+        refresh(player, session);
+    }
+
+    public void clearMiller(Player player) {
+        ViewSession session = requireSession(player);
+        session.showMiller(false);
         refresh(player, session);
     }
 
@@ -658,6 +703,7 @@ public final class CrystalRenderer {
         List<Integer> selected = session.selectedAtoms();
         Set<Integer> highlighted = new HashSet<>(selected);
         highlighted.addAll(session.polyhedronCenters());
+        Set<Integer> glowing = new HashSet<>(selected);
 
         try {
             for (int atomIndex = 0; atomIndex < raw.size(); atomIndex++) {
@@ -721,7 +767,7 @@ public final class CrystalRenderer {
                             mode == CifConfig.RenderMode.CIRCLE && plugin.config().sphereShadow());
                 }
                 entities.add(display.getUniqueId());
-                if (highlighted.contains(atomIndex)) {
+                if (glowing.contains(atomIndex)) {
                     display.setGlowing(true);
                 }
                 String label = atom.atom.label() == null || atom.atom.label().isBlank()
@@ -748,7 +794,7 @@ public final class CrystalRenderer {
                             Component.text(marker.label(), TextColor.color(
                                     marker.rgb()[0], marker.rgb()[1], marker.rgb()[2])),
                             Color.fromARGB(0, 0, 0, 0), 0.6f, true);
-                    label.setGlowing(isSelected);
+                    label.setGlowing(glowing.contains(marker.index()));
                     entities.add(label.getUniqueId());
                     labelCount++;
                 }
@@ -756,6 +802,9 @@ public final class CrystalRenderer {
 
             if (session.showPolyhedron()) {
                 List<Integer> centers = session.polyhedronCenters();
+                if (centers.isEmpty()) {
+                    centers = selected;
+                }
                 for (int centerIndex : centers) {
                     if (centerIndex < 0 || centerIndex >= markers.size()) {
                         continue;
@@ -764,7 +813,15 @@ public final class CrystalRenderer {
                     List<PolyhedronVertex> vertices = coordinationVertices(
                             markers, center, lattice, scale, rotationX, rotationY, rotationZ);
                     List<Vector> points = vertices.stream().map(PolyhedronVertex::position).toList();
-                    for (PolyhedronGeometry.Edge edge : PolyhedronGeometry.convexHullEdges(points)) {
+                    List<List<Integer>> hullFaces = PolyhedronGeometry.convexHullFaces(points);
+                    Set<PolyhedronGeometry.Edge> edges = new java.util.LinkedHashSet<>();
+                    for (List<Integer> face : hullFaces) {
+                        for (int index = 0; index < face.size(); index++) {
+                            edges.add(new PolyhedronGeometry.Edge(face.get(index),
+                                    face.get((index + 1) % face.size())));
+                        }
+                    }
+                    for (PolyhedronGeometry.Edge edge : edges) {
                         Vector start = points.get(edge.first()).clone();
                         Vector end = points.get(edge.second()).clone();
                         Vector direction = end.clone().subtract(start);
@@ -779,6 +836,15 @@ public final class CrystalRenderer {
                         ItemDisplay stick = spawnStick(world, midpoint, direction, length, 0.065,
                                 new int[] {255, 196, 64});
                         entities.add(stick.getUniqueId());
+                    }
+                    if (session.showPolyhedronFaces()) {
+                        int[] rgb = faceColor(center.element());
+                        for (List<Integer> face : hullFaces) {
+                            for (int index = 1; index + 1 < face.size(); index++) {
+                                spawnFaceTriangle(world, origin, points,
+                                        face.get(0), face.get(index), face.get(index + 1), rgb, entities);
+                            }
+                        }
                     }
                     for (Vector point : points) {
                         minX = Math.min(minX, point.getX() - 0.04);
@@ -848,6 +914,62 @@ public final class CrystalRenderer {
                     maxY = Math.max(maxY, corner.getY() + 0.05);
                     maxZ = Math.max(maxZ, corner.getZ() + 0.05);
                     renderedMaxY = Math.max(renderedMaxY, corner.getY());
+                }
+            }
+
+            if (session.showMiller()) {
+                List<double[]> fractional = MillerPlane.polygon(session.millerH(), session.millerK(),
+                        session.millerL(), session.repeatX(), session.repeatY(), session.repeatZ());
+                if (fractional.size() >= 3) {
+                    List<Vector> points = fractional.stream()
+                            .map(point -> latticeVector(lattice, point[0], point[1], point[2], scale))
+                            .toList();
+                    for (Vector point : points) {
+                        rotate(point, rotationX, rotationY, rotationZ);
+                    }
+                    for (int index = 0; index < points.size(); index++) {
+                        Vector start = points.get(index).clone();
+                        Vector end = points.get((index + 1) % points.size()).clone();
+                        Vector direction = end.clone().subtract(start);
+                        double length = direction.length();
+                        if (length < 1.0e-6) {
+                            continue;
+                        }
+                        Location midpoint = new Location(world,
+                                origin.getX() + (start.getX() + end.getX()) / 2.0,
+                                origin.getY() + (start.getY() + end.getY()) / 2.0,
+                                origin.getZ() + (start.getZ() + end.getZ()) / 2.0);
+                        ItemDisplay stick = spawnStick(world, midpoint, direction, length, 0.05,
+                                new int[] {64, 220, 255});
+                        entities.add(stick.getUniqueId());
+                    }
+                    int[] fill = {96, 210, 255};
+                    for (int index = 1; index + 1 < points.size(); index++) {
+                        spawnFaceTriangle(world, origin, points, 0, index, index + 1, fill, entities);
+                    }
+                    Vector centroid = new Vector();
+                    for (Vector point : points) {
+                        centroid.add(point);
+                    }
+                    centroid.multiply(1.0 / points.size());
+                    Location labelLocation = new Location(world,
+                            origin.getX() + centroid.getX(),
+                            origin.getY() + centroid.getY() + 0.35,
+                            origin.getZ() + centroid.getZ());
+                    TextDisplay label = spawn(world, labelLocation,
+                            Component.text("(" + session.millerH() + " " + session.millerK() + " "
+                                    + session.millerL() + ")").color(TextColor.color(160, 235, 255)),
+                            Color.fromARGB(0, 0, 0, 0), 0.7f, true);
+                    entities.add(label.getUniqueId());
+                    for (Vector point : points) {
+                        minX = Math.min(minX, point.getX() - 0.05);
+                        minY = Math.min(minY, point.getY() - 0.05);
+                        minZ = Math.min(minZ, point.getZ() - 0.05);
+                        maxX = Math.max(maxX, point.getX() + 0.05);
+                        maxY = Math.max(maxY, point.getY() + 0.05);
+                        maxZ = Math.max(maxZ, point.getZ() + 0.05);
+                        renderedMaxY = Math.max(renderedMaxY, point.getY());
+                    }
                 }
             }
 
@@ -1145,6 +1267,99 @@ public final class CrystalRenderer {
                 (first[1] + second[1]) / 2,
                 (first[2] + second[2]) / 2
         };
+    }
+
+    private int[] faceColor(String element) {
+        int[] color = ElementInfo.color(element);
+        return new int[] {
+                (color[0] + 255) / 2,
+                (color[1] + 255) / 2,
+                (color[2] + 255) / 2
+        };
+    }
+
+    private void spawnFaceTriangle(World world, Location origin, List<Vector> points,
+            int first, int second, int third, int[] rgb, List<UUID> entities) {
+        Vector a = points.get(first);
+        Vector b = points.get(second);
+        Vector c = points.get(third);
+        double ab = a.distance(b);
+        double ac = a.distance(c);
+        double bc = b.distance(c);
+        Vector apex;
+        Vector baseStart;
+        Vector baseEnd;
+        if (bc >= ab && bc >= ac) {
+            apex = a;
+            baseStart = b;
+            baseEnd = c;
+        } else if (ac >= ab) {
+            apex = b;
+            baseStart = a;
+            baseEnd = c;
+        } else {
+            apex = c;
+            baseStart = a;
+            baseEnd = b;
+        }
+        Vector base = baseEnd.clone().subtract(baseStart);
+        double baseLengthSquared = base.lengthSquared();
+        if (baseLengthSquared < 1.0e-12) {
+            return;
+        }
+        double t = apex.clone().subtract(baseStart).dot(base) / baseLengthSquared;
+        t = clamp(t, 0.0, 1.0);
+        Vector foot = baseStart.clone().add(base.clone().multiply(t));
+        spawnRightTriangle(world, origin, foot, baseStart, apex, rgb, entities);
+        spawnRightTriangle(world, origin, foot, baseEnd, apex, rgb, entities);
+    }
+
+    private void spawnRightTriangle(World world, Location origin, Vector corner,
+            Vector first, Vector second, int[] rgb, List<UUID> entities) {
+        Vector legA = first.clone().subtract(corner);
+        Vector legB = second.clone().subtract(corner);
+        double lengthA = legA.length();
+        if (lengthA < 1.0e-5) {
+            return;
+        }
+        Vector axisX = legA.clone().multiply(1.0 / lengthA);
+        Vector perpendicular = legB.clone().subtract(axisX.clone().multiply(legB.dot(axisX)));
+        double height = perpendicular.length();
+        if (height < 1.0e-5) {
+            return;
+        }
+        Vector axisY = perpendicular.clone().multiply(1.0 / height);
+        Vector axisZ = axisX.clone().crossProduct(axisY).normalize();
+        Matrix3f basis = new Matrix3f()
+                .setColumn(0, (float) axisX.getX(), (float) axisX.getY(), (float) axisX.getZ())
+                .setColumn(1, (float) axisY.getX(), (float) axisY.getY(), (float) axisY.getZ())
+                .setColumn(2, (float) axisZ.getX(), (float) axisZ.getY(), (float) axisZ.getZ());
+        AxisAngle4f rotation = new AxisAngle4f().set(basis);
+        ItemStack item = new ItemStack(Material.PAPER);
+        item.setData(DataComponentTypes.ITEM_MODEL, Key.key("cifviewer", "face"));
+        item.setData(DataComponentTypes.DYED_COLOR,
+                DyedItemColor.dyedItemColor(Color.fromRGB(rgb[0], rgb[1], rgb[2])));
+        Vector center = corner.clone()
+                .add(legA.clone().multiply(0.5))
+                .add(perpendicular.clone().multiply(0.5));
+        Location location = new Location(world,
+                origin.getX() + center.getX(),
+                origin.getY() + center.getY(),
+                origin.getZ() + center.getZ());
+        ItemDisplay display = world.spawn(location, ItemDisplay.class, entity -> {
+            entity.setItemStack(item);
+            entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+            entity.setBillboard(Display.Billboard.FIXED);
+            entity.setViewRange(1.5f);
+            entity.setPersistent(false);
+            entity.setTransformation(new Transformation(
+                    new Vector3f(),
+                    rotation,
+                    new Vector3f((float) lengthA, (float) height, 1.0f),
+                    new AxisAngle4f()));
+            entity.addScoreboardTag(TAG);
+        });
+        entities.add(display.getUniqueId());
     }
 
     private ItemDisplay spawnStick(World world, Location location, Vector direction, double length,

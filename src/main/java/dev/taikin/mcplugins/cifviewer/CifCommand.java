@@ -10,9 +10,11 @@ import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.mojang.brigadier.tree.LiteralCommandNode;
 import dev.taikin.mcplugins.cifviewer.cif.CifParser;
 import dev.taikin.mcplugins.cifviewer.model.Crystal;
+import dev.taikin.mcplugins.cifviewer.model.SlabBuilder;
 import dev.taikin.mcplugins.cifviewer.xrd.XrdMapRenderer;
 import dev.taikin.mcplugins.cifviewer.xrd.XrdPattern;
 import dev.taikin.mcplugins.cifviewer.xrd.XrdSimulator;
+import dev.taikin.mcplugins.cifviewer.render.ViewSession;
 import dev.taikin.mcplugins.cifviewer.xrd.XraySource;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
@@ -66,6 +68,40 @@ public final class CifCommand {
                                 .executes(context -> wand(sender(context), CifWand.WandType.ATOM))))
                 .then(Commands.literal("wands")
                         .executes(context -> wands(sender(context))))
+                .then(Commands.literal("slab")
+                        .then(Commands.argument("h", IntegerArgumentType.integer(-20, 20))
+                                .then(Commands.argument("k", IntegerArgumentType.integer(-20, 20))
+                                        .then(Commands.argument("l", IntegerArgumentType.integer(-20, 20))
+                                                .then(Commands.argument("layers", IntegerArgumentType.integer(1, 12))
+                                                        .executes(context -> slab(sender(context),
+                                                                IntegerArgumentType.getInteger(context, "h"),
+                                                                IntegerArgumentType.getInteger(context, "k"),
+                                                                IntegerArgumentType.getInteger(context, "l"),
+                                                                IntegerArgumentType.getInteger(context, "layers"),
+                                                                12.0))
+                                                        .then(Commands.argument("vacuum",
+                                                                        DoubleArgumentType.doubleArg(0.0, 60.0))
+                                                                .executes(context -> slab(sender(context),
+                                                                        IntegerArgumentType.getInteger(context, "h"),
+                                                                        IntegerArgumentType.getInteger(context, "k"),
+                                                                        IntegerArgumentType.getInteger(context, "l"),
+                                                                        IntegerArgumentType.getInteger(context, "layers"),
+                                                                        DoubleArgumentType.getDouble(context, "vacuum")))))))))
+                .then(Commands.literal("miller")
+                        .executes(context -> miller(sender(context), null, null, null))
+                        .then(Commands.literal("off")
+                                .executes(context -> millerOff(sender(context))))
+                        .then(Commands.argument("h", IntegerArgumentType.integer(-20, 20))
+                                .then(Commands.argument("k", IntegerArgumentType.integer(-20, 20))
+                                        .then(Commands.argument("l", IntegerArgumentType.integer(-20, 20))
+                                                .executes(context -> miller(sender(context),
+                                                        IntegerArgumentType.getInteger(context, "h"),
+                                                        IntegerArgumentType.getInteger(context, "k"),
+                                                        IntegerArgumentType.getInteger(context, "l")))))))
+                .then(Commands.literal("center")
+                        .executes(context -> center(sender(context)))
+                        .then(Commands.literal("clear")
+                                .executes(context -> centerClear(sender(context)))))
                 .then(Commands.literal("pack")
                         .executes(context -> pack(sender(context))))
                 .then(Commands.literal("download")
@@ -184,6 +220,8 @@ public final class CifCommand {
         sender.sendMessage(command("/cif xrd ", "CIF から XRD シミュレーション地図を作成", false));
         sender.sendMessage(command("/cif xrdat ", "線源と 2θ 範囲を指定して XRD 地図を作成", false));
         sender.sendMessage(command("/cif xrdopt ", "source=Cu / range=10:90 形式の指定", false));
+        sender.sendMessage(command("/cif miller ", "Miller面 (h k l) を表示 / off で非表示", false));
+        sender.sendMessage(command("/cif slab ", "h k l 層数 [真空Å] でスラブを生成（既定 12 Å）", false));
         sender.sendMessage(command("/cif models", "全モデル一覧", true));
         sender.sendMessage(command("/cif select ", "操作するモデルを選択", false));
         sender.sendMessage(command("/cif remove ", "指定モデルを削除（所有者/管理者）", false));
@@ -205,20 +243,23 @@ public final class CifCommand {
         sender.sendMessage(Component.text("モデルをクリック: 選択 / メニュー", NamedTextColor.GRAY));
 
         sender.sendMessage(Component.text("CIFビュー棒", NamedTextColor.AQUA));
-        sender.sendMessage(Component.text("左クリック(空): 選択軸で15°回転（スニークで逆回転）",
+        sender.sendMessage(Component.text("左クリック: 選択軸で+15°回転 / 右クリック: -15°回転",
                 NamedTextColor.GRAY));
-        sender.sendMessage(Component.text("左クリック(ブロック面): 回転軸を変更", NamedTextColor.GRAY));
-        sender.sendMessage(Component.text("スニーク+左クリック(ブロック): 原点(0,0,0)を設定",
+        sender.sendMessage(Component.text("スニーク+左クリック(ブロック面): 回転軸を変更",
+                NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("スニーク+左クリック(空): 回転軸を切替",
+                NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("スニーク+右クリック(ブロック面): 原点(0,0,0)を設定",
                 NamedTextColor.GRAY));
         sender.sendMessage(Component.text("スニーク+スクロール: 全体サイズを変更", NamedTextColor.GRAY));
         sender.sendMessage(Component.text("原点: 結晶の0,0,0 を基準に配置・回転", NamedTextColor.GRAY));
 
         sender.sendMessage(Component.text("CIF原子棒", NamedTextColor.AQUA));
-        sender.sendMessage(Component.text("右クリック: 原子を選択 / 追加", NamedTextColor.GRAY));
-        sender.sendMessage(Component.text("左クリック: 選択解除", NamedTextColor.GRAY));
-        sender.sendMessage(Component.text("中クリック / スニーク+右クリック: 多面体中心を追加/解除",
-                NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("右クリック / 中クリック: 多面体中心を追加 / 解除", NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("スニーク+右クリック: 測定原子を選択 / 追加", NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("左クリック: 測定選択を解除", NamedTextColor.GRAY));
         sender.sendMessage(Component.text("スニーク+左クリック: 多面体中心をすべて解除", NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("/cif center: クロスヘアの原子を中心に追加/解除", NamedTextColor.GRAY));
         sender.sendMessage(Component.text("2原子: 距離 / 3原子: 角度 / 4原子: 二面角", NamedTextColor.GRAY));
 
         sender.sendMessage(Component.text("GUI: 半径 vdW / イオン / 共有結合、リピート X / Y / Z",
@@ -258,8 +299,99 @@ public final class CifCommand {
         plugin.wand().giveIfMissing(player, CifWand.WandType.MENU);
         plugin.wand().giveIfMissing(player, CifWand.WandType.VIEW);
         plugin.wand().giveIfMissing(player, CifWand.WandType.ATOM);
+        plugin.wand().refreshAppearance(player);
         sender.sendMessage(Component.text("CIFメニュー棒・CIFビュー棒・CIF原子棒を付与しました。",
                 NamedTextColor.GREEN));
+        return 1;
+    }
+
+    private int slab(CommandSender sender, int h, int k, int l, int layers, double vacuum) {
+        Player player = player(sender);
+        if (player == null) {
+            return 0;
+        }
+        ViewSession session = plugin.renderer().session(player);
+        if (session == null) {
+            player.sendMessage(Component.text("構造が表示されていません。先に /cif view を実行してください。",
+                    NamedTextColor.RED));
+            return 0;
+        }
+        try {
+            Crystal slab = SlabBuilder.build(session.crystal(), h, k, l, layers, vacuum);
+            int atoms = plugin.renderer().view(player, slab, session.blocksPerAngstrom(), 1);
+            player.sendMessage(Component.text("スラブ " + slab.name() + " を追加しました（"
+                    + atoms + " 原子）。", NamedTextColor.GREEN));
+        } catch (RuntimeException e) {
+            player.sendMessage(Component.text(e.getMessage() == null ? "スラブを作成できませんでした。"
+                    : e.getMessage(), NamedTextColor.RED));
+            return 0;
+        }
+        return 1;
+    }
+
+    private int miller(CommandSender sender, Integer h, Integer k, Integer l) {
+        Player player = player(sender);
+        if (player == null) {
+            return 0;
+        }
+        if (plugin.renderer().session(player) == null) {
+            player.sendMessage(Component.text("構造が表示されていません。", NamedTextColor.RED));
+            return 0;
+        }
+        if (h == null) {
+            player.sendMessage(Component.text("Miller面: 現在 ("
+                    + plugin.renderer().session(player).millerH()
+                    + plugin.renderer().session(player).millerK()
+                    + plugin.renderer().session(player).millerL() + ") "
+                    + (plugin.renderer().session(player).showMiller() ? "ON" : "OFF"),
+                    NamedTextColor.AQUA));
+            player.sendMessage(Component.text("/cif miller <h> <k> <l> または /cif miller off",
+                    NamedTextColor.GRAY));
+            return 1;
+        }
+        try {
+            plugin.renderer().setMiller(player, h, k, l);
+            player.sendMessage(Component.text("Miller面 (" + h + " " + k + " " + l + ") を表示します。",
+                    NamedTextColor.GREEN));
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            player.sendMessage(Component.text(e.getMessage(), NamedTextColor.RED));
+            return 0;
+        }
+        return 1;
+    }
+
+    private int millerOff(CommandSender sender) {
+        Player player = player(sender);
+        if (player == null) {
+            return 0;
+        }
+        plugin.renderer().clearMiller(player);
+        player.sendActionBar(Component.text("Miller面を非表示にしました。", NamedTextColor.AQUA));
+        return 1;
+    }
+
+    private int center(CommandSender sender) {
+        Player player = player(sender);
+        if (player == null) {
+            return 0;
+        }
+        try {
+            player.sendActionBar(Component.text(
+                    plugin.renderer().togglePolyhedronCenter(player), NamedTextColor.AQUA));
+        } catch (IllegalStateException e) {
+            player.sendMessage(Component.text(e.getMessage(), NamedTextColor.RED));
+            return 0;
+        }
+        return 1;
+    }
+
+    private int centerClear(CommandSender sender) {
+        Player player = player(sender);
+        if (player == null) {
+            return 0;
+        }
+        player.sendActionBar(Component.text(
+                plugin.renderer().clearPolyhedronCenters(player), NamedTextColor.AQUA));
         return 1;
     }
 

@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
-import dev.taikin.mcplugins.cifviewer.model.ElementInfo;
+import dev.taikin.miviewer.common.ElementInfo;
 import java.io.File;
 import java.util.logging.Logger;
 import org.bukkit.configuration.file.YamlConfiguration;

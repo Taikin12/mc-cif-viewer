@@ -1,7 +1,7 @@
 package dev.taikin.mcplugins.cifviewer.xrd;
 
 import dev.taikin.mcplugins.cifviewer.model.Crystal;
-import dev.taikin.mcplugins.cifviewer.model.ElementInfo;
+import dev.taikin.miviewer.common.ElementInfo;
 import dev.taikin.mcplugins.cifviewer.model.Lattice;
 import java.util.HashMap;
 import java.util.Map;

@@ -2,7 +2,7 @@ package dev.taikin.mcplugins.cifviewer.mp;
 
 import dev.taikin.mcplugins.cifviewer.CifConfig;
 import dev.taikin.mcplugins.cifviewer.model.Crystal;
-import dev.taikin.mcplugins.cifviewer.model.ElementInfo;
+import dev.taikin.miviewer.common.ElementInfo;
 import dev.taikin.mcplugins.cifviewer.model.Lattice;
 import java.net.URI;
 import java.net.URLEncoder;

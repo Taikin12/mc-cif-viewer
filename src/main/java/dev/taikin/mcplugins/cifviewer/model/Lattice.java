@@ -136,9 +136,27 @@ public final class Lattice {
 
     public double[] toFractional(double x, double y, double z) {
         return new double[] {
-            inverse[0][0] * x + inverse[0][1] * y + inverse[0][2] * z,
-            inverse[1][0] * x + inverse[1][1] * y + inverse[1][2] * z,
-            inverse[2][0] * x + inverse[2][1] * y + inverse[2][2] * z
+            inverse[0][0] * x + inverse[1][0] * y + inverse[2][0] * z,
+            inverse[0][1] * x + inverse[1][1] * y + inverse[2][1] * z,
+            inverse[0][2] * x + inverse[1][2] * y + inverse[2][2] * z
+        };
+    }
+
+    public double[] reciprocalVector(int h, int k, int l) {
+        double[] a = toCartesian(1.0, 0.0, 0.0);
+        double[] b = toCartesian(0.0, 1.0, 0.0);
+        double[] c = toCartesian(0.0, 0.0, 1.0);
+        double volume = dot(a, cross(b, c));
+        if (Math.abs(volume) < EPSILON) {
+            throw new IllegalArgumentException("Lattice volume is zero.");
+        }
+        double[] astar = scale(cross(b, c), 1.0 / volume);
+        double[] bstar = scale(cross(c, a), 1.0 / volume);
+        double[] cstar = scale(cross(a, b), 1.0 / volume);
+        return new double[] {
+            h * astar[0] + k * bstar[0] + l * cstar[0],
+            h * astar[1] + k * bstar[1] + l * cstar[1],
+            h * astar[2] + k * bstar[2] + l * cstar[2]
         };
     }
 
