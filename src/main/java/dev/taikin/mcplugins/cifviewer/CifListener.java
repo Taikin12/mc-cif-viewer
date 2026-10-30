@@ -24,6 +24,7 @@ import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
@@ -35,6 +36,11 @@ public final class CifListener implements Listener {
 
     public CifListener(CifViewerPlugin plugin) {
         this.plugin = plugin;
+    }
+
+    @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        plugin.wand().refreshAppearance(event.getPlayer());
     }
 
     @EventHandler
